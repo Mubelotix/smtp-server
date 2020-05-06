@@ -21,19 +21,37 @@ pub enum Stream {
 
 impl Read for Stream {
     fn read(&mut self, mut buffer: &mut [u8]) -> std::io::Result<usize> {
-        match self {
+        let bytes = match self {
             Stream::Encrypted(stream) => stream.read(&mut buffer),
             Stream::Unencryted(stream) => stream.read(&mut buffer)
+        };
+        if let Ok(bytes) = bytes {
+            if bytes > 0 {
+                if buffer[..bytes].ends_with(&[b'\r', b'\n']) {
+                    debug!("\x1B[35m{}\x1B[0m", String::from_utf8_lossy(&buffer[..bytes - 2]));
+                } else {
+                    debug!("\x1B[35m{}\x1B[0m", String::from_utf8_lossy(&buffer[..bytes]));
+                }
+            }
         }
+        bytes
     }
 }
 
 impl Write for Stream {
     fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
-        match self {
+        let bytes = match self {
             Stream::Encrypted(stream) => stream.write(&buffer),
             Stream::Unencryted(stream) => stream.write(&buffer)
+        };
+        if let Ok(bytes) = bytes {
+            if buffer[..bytes].ends_with(&[b'\r', b'\n']) {
+                debug!("\x1B[32m{}\x1B[0m", String::from_utf8_lossy(&buffer[..bytes - 2]));
+            } else {
+                debug!("\x1B[32m{}\x1B[0m", String::from_utf8_lossy(&buffer[..bytes]));
+            }
         }
+        bytes
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
@@ -64,7 +82,7 @@ fn handle_client(stream: TcpStream) -> std::io::Result<()> {
     // 220 or 554 but wait the Quit while responding 503
 
     let mut stream = Stream::Unencryted(stream);
-    let _a = stream.write(format!("220 {} Custom Rust SMTP implementation\r\n", DOMAIN).as_bytes())?;
+    let _read = stream.write(b"220 mubelotix.dev Rust SMTP Server v1.0\r\n")?;
 
     let mut file = File::open("test.pfx").unwrap();
     let mut identity = vec![];
@@ -85,25 +103,19 @@ fn handle_client(stream: TcpStream) -> std::io::Result<()> {
         trace!("{} bytes read", i);
         let rep = String::from_utf8(t[..i].to_vec()).unwrap();
         
-        debug!("C: {:?}", rep);
         if let Ok(command) = rep.parse::<Command>() {
             match command {
                 Command::Helo(_) => {
-                    debug!("S: {:?}", format!("250 {}\r\n", DOMAIN));
                     let _written = stream.write(format!("250 {}\r\n", DOMAIN).as_bytes())?;
                 },
                 Command::Ehlo(domain) => {
-                    debug!("S: {:?}", format!("250-{} greets {}\r\n", DOMAIN, domain));
-                    debug!("S: {:?}", "250 STARTTLS\r\n".to_string());
                     let _written = stream.write(format!("250-{} greets {}\r\n", DOMAIN, domain).as_bytes())?;
                     let _written = stream.write(b"250 STARTTLS\r\n")?;
                 }
                 Command::Mail | Command::Recipient | Command::Reset => {
-                    debug!("S: {:?}", "250 OK\r\n");
                     let _written = stream.write(b"250 OK\r\n")?;
                 }
                 Command::Data => {
-                    debug!("S: {:?}", "354\r\n");
                     let _written = stream.write(b"354\r\n")?;
                     
                     let mut mail: Vec<u8> = Vec::new();
@@ -114,28 +126,24 @@ fn handle_client(stream: TcpStream) -> std::io::Result<()> {
                     }
                     debug!("{}", String::from_utf8_lossy(&mail));
 
-                    debug!("S: {:?}", "250 OK\r\n");
                     let _written = stream.write(b"250 OK\r\n")?;
                 }
                 Command::Quit => {
-                    debug!("S: {:?}", "221 OK\r\n");
                     let _written = stream.write(b"221 OK\r\n");
                     stream.shutdown();
                     return Ok(());
                 }
                 Command::StartTls => {
-                    debug!("S: {:?}", "220 Go ahead\r\n");
                     let _written = stream.write(b"220 Go ahead\r\n");
                     if let Stream::Unencryted(unencrypted_stream) = stream {
                         if let Ok(encrypted_stream) = acceptor.accept(unencrypted_stream) {
                             stream = Stream::Encrypted(encrypted_stream);
+                            info!("TLS enabled");
                         } else {
-                            println!("Failed to enable TLS.");
+                            warn!("Failed to enable TLS");
                             return Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe))
                         }
-                    }   
-                    
-                    println!("Suceess");
+                    }
                 }
                 _ => (),
             }
