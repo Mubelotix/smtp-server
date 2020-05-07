@@ -111,7 +111,14 @@ fn handle_client(stream: TcpStream) -> std::io::Result<()> {
                     let _written = stream.write(format!("250-{} greets {}\r\n", DOMAIN, domain).as_bytes())?;
                     let _written = stream.write(b"250 STARTTLS\r\n")?;
                 }
-                Command::Mail | Command::Recipient | Command::Reset => {
+                Command::Recipient(from) => {
+                    if from.ends_with(DOMAIN) {
+                        let _written = stream.write(b"250 OK\r\n")?;
+                    } else {
+                        let _written = stream.write(format!("550 The address {} is not hosted on this domain ({})\r\n", from, DOMAIN).as_bytes())?;
+                    }
+                }
+                Command::Mail(_) | Command::Reset => {
                     let _written = stream.write(b"250 OK\r\n")?;
                 }
                 Command::Data => {
@@ -145,7 +152,7 @@ fn handle_client(stream: TcpStream) -> std::io::Result<()> {
                         }
                     }
                 }
-                _ => (),
+                _ => {let written = stream.write(b"502 Command not implemented\r\n")?;},
             }
         } else {
             let _written = stream.write(b"500 Syntax error, command unrecognized\r\n")?;

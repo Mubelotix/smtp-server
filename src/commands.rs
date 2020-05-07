@@ -5,9 +5,9 @@ use string_tools::*;
 pub enum Command {
     Helo(String),
     Ehlo(String),
-    Mail,
+    Mail(String),
     Reset,
-    Recipient,
+    Recipient(String),
     Verify,
     Expand,
     Help,
@@ -73,8 +73,14 @@ impl std::str::FromStr for Command {
             c if c.starts_with("HELP ") => Ok(Command::Help),
             c if c.starts_with("NOOP ") => Ok(Command::Noop),
             c if c.starts_with("QUIT") => Ok(Command::Quit),
-            c if c.starts_with("MAIL ") => Ok(Command::Mail),
-            c if c.starts_with("RCPT ") => Ok(Command::Recipient),
+            c if c.starts_with("MAIL FROM:") => {
+                let from = get_all_between(command, "<", ">");
+                Ok(Command::Mail(from.to_string()))
+            },
+            c if c.starts_with("RCPT TO:") => {
+                let to = get_all_between(command, "<", ">");
+                Ok(Command::Recipient(to.to_string()))
+            },
             c if c.starts_with("DATA") => Ok(Command::Data),
             c if c.starts_with("RSET ") => Ok(Command::Reset),
             c if c.starts_with("STARTTLS") => Ok(Command::StartTls),
