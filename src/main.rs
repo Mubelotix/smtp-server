@@ -90,6 +90,10 @@ fn handle_client(stream: TcpStream) -> std::io::Result<()> {
     let identity = Identity::from_pkcs12(&identity, "testingcert").unwrap();
     let acceptor = TlsAcceptor::new(identity).unwrap();
     let acceptor = Arc::new(acceptor);
+
+    let mut from = None;
+    let mut to = Vec::new();
+    let mut body = None;
         
     loop {
         let mut t = [0;128];
@@ -111,14 +115,27 @@ fn handle_client(stream: TcpStream) -> std::io::Result<()> {
                     let _written = stream.write(format!("250-{} greets {}\r\n", DOMAIN, domain).as_bytes())?;
                     let _written = stream.write(b"250 STARTTLS\r\n")?;
                 }
-                Command::Recipient(from) => {
-                    if from.ends_with(DOMAIN) {
+                Command::Recipient(address) => {
+                    if address.ends_with(DOMAIN) {
+                        to.push(address);
+
                         let _written = stream.write(b"250 OK\r\n")?;
                     } else {
-                        let _written = stream.write(format!("550 The address {} is not hosted on this domain ({})\r\n", from, DOMAIN).as_bytes())?;
+                        let _written = stream.write(format!("455 The address {} is not hosted on this domain ({})\r\n", address, DOMAIN).as_bytes())?;
                     }
                 }
-                Command::Mail(_) | Command::Reset => {
+                Command::Mail(adress) => {
+                    from = Some(adress);
+                    to = Vec::new();
+                    body = None;
+
+                    let _written = stream.write(b"250 OK\r\n")?;
+                }
+                Command::Reset => {
+                    from = None;
+                    to = Vec::new();
+                    body = None;
+
                     let _written = stream.write(b"250 OK\r\n")?;
                 }
                 Command::Data => {
@@ -130,7 +147,9 @@ fn handle_client(stream: TcpStream) -> std::io::Result<()> {
                         let read = stream.read(&mut buffer)?;
                         mail.append(&mut buffer[..read].to_vec());
                     }
-                    debug!("{}", String::from_utf8_lossy(&mail));
+                    let mail = String::from_utf8_lossy(&mail);
+                    info!("Received mail: {}", mail);
+                    body = Some(mail);
 
                     let _written = stream.write(b"250 OK\r\n")?;
                 }
@@ -151,6 +170,9 @@ fn handle_client(stream: TcpStream) -> std::io::Result<()> {
                             return Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe))
                         }
                     }
+                }
+                Command::Noop => {
+                    let _written = stream.write(b"250 OK\r\n")?;
                 }
                 _ => {let written = stream.write(b"502 Command not implemented\r\n")?;},
             }
