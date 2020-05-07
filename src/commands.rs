@@ -82,7 +82,7 @@ impl std::str::FromStr for Command {
                 Ok(Command::Recipient(to.to_string()))
             },
             c if c.starts_with("DATA") => Ok(Command::Data),
-            c if c.starts_with("RSET ") => Ok(Command::Reset),
+            c if c.starts_with("RSET") => Ok(Command::Reset),
             c if c.starts_with("STARTTLS") => Ok(Command::StartTls),
             c => Err(ParsingCommandError::UnknownCommand),
         }

@@ -147,8 +147,12 @@ fn handle_client(stream: TcpStream) -> std::io::Result<()> {
                         let read = stream.read(&mut buffer)?;
                         mail.append(&mut buffer[..read].to_vec());
                     }
+                    if let Ok(mut file) = std::fs::File::create("mail.txt") {
+                        file.write_all(&mail)?;
+                    }
                     let mail = String::from_utf8_lossy(&mail);
                     info!("Received mail: {}", mail);
+                    
                     body = Some(mail);
 
                     let _written = stream.write(b"250 OK\r\n")?;
