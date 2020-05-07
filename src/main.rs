@@ -1,5 +1,5 @@
 use std::net::{TcpListener, TcpStream};
-use std::io::prelude::*;
+use std::io::{prelude::*, ErrorKind};
 use log::{trace, debug, info, warn, error};
 use native_tls::{Identity, TlsAcceptor, TlsStream};
 use std::fs::File;
@@ -100,7 +100,6 @@ fn handle_client(stream: TcpStream) -> std::io::Result<()> {
             continue;
         }
 
-        trace!("{} bytes read", i);
         let rep = String::from_utf8(t[..i].to_vec()).unwrap();
         
         if let Ok(command) = rep.parse::<Command>() {
@@ -131,6 +130,7 @@ fn handle_client(stream: TcpStream) -> std::io::Result<()> {
                 Command::Quit => {
                     let _written = stream.write(b"221 OK\r\n");
                     stream.shutdown();
+                    debug!("Connection closed");
                     return Ok(());
                 }
                 Command::StartTls => {
@@ -148,30 +148,50 @@ fn handle_client(stream: TcpStream) -> std::io::Result<()> {
                 _ => (),
             }
         } else {
-            debug!("500 Syntax error, command unrecognized\r\n");
             let _written = stream.write(b"500 Syntax error, command unrecognized\r\n")?;
         }
         
     }
 }
 
+use clap::clap_app;
+
 fn main() -> std::io::Result<()> {
+    let matches = clap_app!(myapp =>
+        (version: "1.1")
+        (author: "Mubelotix <mubelotix@gmail.com>")
+        (about: "Rust SMTP Server")
+        (@arg TLS: --tls +takes_value "Enable TLS by providing a pfx file.")
+        (@arg PORT: -p --port +takes_value default_value("25") "Set the listening port.")
+    ).get_matches();
+
     env_logger::init();
 
-    let listener = TcpListener::bind("0.0.0.0:25")?;
+    let port: u16 = matches.value_of("PORT").unwrap_or("25").parse().unwrap_or(25);
+    let tls_cert_file = matches.value_of("TLS");
+
+    info!("Launching SMTP server on port {}. TLS is {}.", port, if tls_cert_file.is_some() {"enabled"} else {"disabled"});
+
+    let listener = match TcpListener::bind("0.0.0.0:25") {
+        Ok(listener) => listener,
+        Err(e) if e.kind() == ErrorKind::PermissionDenied => {
+            error!("The port {} requires sudo power.", port);
+            return Err(e);
+        },
+        Err(e) => return Err(e),
+    };
 
     // accept connections and process them serially
-    for stream in listener.incoming() {
-        println!("New client");
-        handle_client(stream?);
+    for stream in listener.incoming().filter(|s| s.is_ok()) {
+        let stream = stream.unwrap(); // it can only be ok thanks to the filter above
+
+        if let Ok(ip) = stream.peer_addr() {
+            debug!("New client (ip: {})", ip);
+        } else {
+            debug!("New client");
+        }
+        
+        handle_client(stream);
     }
     Ok(())
-}
-
-#[test]
-fn test() {
-    let mut test = TcpStream::connect("smtp.gmail.com:25").unwrap();
-    let mut t = [0;128];
-    let i = test.read(&mut t).unwrap();
-    println!("{}", i);
 }

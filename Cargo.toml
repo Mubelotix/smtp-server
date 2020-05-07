@@ -1,13 +1,12 @@
 [package]
 name = "smtp-server"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Mubelotix <mubelotix@gmail.com>"]
 edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 log = "0.4"
 env_logger = "0.7"
 string-tools = "0.1"
 native-tls = "0.2"
+clap = "2.33"
