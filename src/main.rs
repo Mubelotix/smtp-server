@@ -15,7 +15,7 @@ use std::time::Duration;
 pub mod commands;
 pub mod replies;
 pub mod address;
-use commands::Command;
+use commands::{Command, ParsingCommandError};
 use replies::Reply;
 
 pub const DOMAIN: &str = "mubelotix.dev";
@@ -44,6 +44,38 @@ impl Stream {
         }
 
         Ok(())
+    }
+
+    fn read_command(&mut self) -> std::io::Result<Result<Command, ParsingCommandError>> {
+        let mut command = Vec::new();
+
+        let mut requests = 0;
+        while !command.ends_with(&[0x0D, 0x0A]) && requests < 30 {
+            let mut t = [0;128];
+            let i = self.read(&mut t)?;
+            
+            if i == 0 {
+                sleep(Duration::from_millis(10));
+                continue;
+            }
+
+            requests += 1;
+            command.append(&mut t[..i].to_vec());
+        }
+
+        if requests == 30 {
+            warn!("Infinite loop cancelled");
+        }
+
+        let command = match String::from_utf8(command) {
+            Ok(command) => command,
+            Err(e) => {
+                warn!("Server returned invalid utf8. {}", e);
+                return Err(std::io::Error::from(std::io::ErrorKind::InvalidData));
+            },
+        };
+        
+        Ok(command.parse())
     }
 
     fn reply(&mut self, reply: Reply) -> std::io::Result<()> {
@@ -134,97 +166,91 @@ fn handle_client(stream: TcpStream) -> std::io::Result<()> {
     let mut body = None;
         
     loop {
-        let mut t = [0;128];
-        let i = stream.read(&mut t)?;
-        
-        if i == 0 {
-            sleep(Duration::from_millis(10));
-            continue;
-        }
-
-        let rep = String::from_utf8(t[..i].to_vec()).unwrap();
-        
-        if let Ok(command) = rep.parse::<Command>() {
-            match command {
-                Command::Helo(_) => {
-                    stream.reply(Reply::Ok(DOMAIN.to_string()))?;
-                },
-                Command::Ehlo(domain) => {
-                    stream.reply(Reply::Ok(format!("{} greets {}\nAUTH PLAIN\nSTARTTLS", DOMAIN, domain)))?;
-                }
-                Command::Recipient(address) => {
-                    if address.domain == DOMAIN {
-                        to.push(address);
-
-                        stream.reply(Reply::Ok(String::from("OK")))?;
-                    } else {
-                        stream.reply(Reply::UnableToAccomodateParameters(format!("The address {} is not hosted on this domain ({})", address, DOMAIN)))?;
-                    }
-                }
-                Command::Mail(adress) => {
-                    from = Some(adress);
-                    to = Vec::new();
-                    body = None;
-
-                    stream.reply(Reply::Ok(String::from("OK")))?;
-                }
-                Command::Reset => {
-                    from = None;
-                    to = Vec::new();
-                    body = None;
-
-                    stream.reply(Reply::Ok(String::from("OK")))?;
-                }
-                Command::Data => {
-                    let _written = stream.write(b"354\r\n")?;
-                    
-                    let mut mail: Vec<u8> = Vec::new();
-                    let mut buffer = [0;512];
-                    while !mail.ends_with(&[b'\r', b'\n', b'.', b'\r', b'\n']) {
-                        let read = stream.read(&mut buffer)?;
-                        mail.append(&mut buffer[..read].to_vec());
-                    }
-                    if let Ok(mut file) = std::fs::File::create("mail.txt") {
-                        file.write_all(&mail)?;
-                    }
-                    let mail = String::from_utf8_lossy(&mail);
-                    info!("Received mail: {}", mail);
-                    
-                    body = Some(mail);
-
-                    stream.reply(Reply::Ok(String::from("OK")))?;
-                }
-                #[allow(unused_must_use)]
-                Command::Quit => {
-                    stream.reply(Reply::Ok(String::from("OK")));
-                    stream.shutdown();
-                    return Ok(());
-                }
-                Command::StartTls => {
-                    stream.reply(Reply::ServiceReady(String::from("Go ahead")))?;
-                    if let Stream::Unencryted(unencrypted_stream) = stream {
-                        if let Ok(encrypted_stream) = acceptor.accept(unencrypted_stream) {
-                            stream = Stream::Encrypted(encrypted_stream);
-                            info!("TLS enabled");
-                        } else {
-                            warn!("Failed to enable TLS");
-                            return Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe))
-                        }
-                    }
-                }
-                Command::Auth(data) => {
-                    debug!("{:?}", data.as_bytes());
-                    let _written = stream.write(b"235 Authentication successful\r\n")?;
-                }
-                Command::Noop => {
-                    stream.reply(Reply::Ok(String::from("OK")))?;
-                }
-                _ => {stream.reply(Reply::CommandNotImplemented(String::from("This server does not implement this command for now.")))?;},
+        let command = match stream.read_command()? {
+            Ok(command) => command,
+            Err(e) => {
+                stream.reply(Reply::SyntaxError(String::from("That command was strange!")))?;
+                warn!("Failed to parse command: {:?}", e);
+                continue
             }
-        } else {
-            stream.reply(Reply::SyntaxError(String::from("That command was strange!")))?;
+        };
+
+        match command {
+            Command::Helo(_) => {
+                stream.reply(Reply::Ok(DOMAIN.to_string()))?;
+            },
+            Command::Ehlo(domain) => {
+                stream.reply(Reply::Ok(format!("{} greets {}\nAUTH PLAIN\nSTARTTLS", DOMAIN, domain)))?;
+            }
+            Command::Recipient(address) => {
+                if address.domain == DOMAIN {
+                    to.push(address);
+
+                    stream.reply(Reply::Ok(String::from("OK")))?;
+                } else {
+                    stream.reply(Reply::UnableToAccomodateParameters(format!("The address {} is not hosted on this domain ({})", address, DOMAIN)))?;
+                }
+            }
+            Command::Mail(adress) => {
+                from = Some(adress);
+                to = Vec::new();
+                body = None;
+
+                stream.reply(Reply::Ok(String::from("OK")))?;
+            }
+            Command::Reset => {
+                from = None;
+                to = Vec::new();
+                body = None;
+
+                stream.reply(Reply::Ok(String::from("OK")))?;
+            }
+            Command::Data => {
+                let _written = stream.write(b"354\r\n")?;
+                
+                let mut mail: Vec<u8> = Vec::new();
+                let mut buffer = [0;512];
+                while !mail.ends_with(&[b'\r', b'\n', b'.', b'\r', b'\n']) {
+                    let read = stream.read(&mut buffer)?;
+                    mail.append(&mut buffer[..read].to_vec());
+                }
+                if let Ok(mut file) = std::fs::File::create("mail.txt") {
+                    file.write_all(&mail)?;
+                }
+                let mail = String::from_utf8_lossy(&mail);
+                info!("Received mail: {}", mail);
+                
+                body = Some(mail);
+
+                stream.reply(Reply::Ok(String::from("OK")))?;
+            }
+            #[allow(unused_must_use)]
+            Command::Quit => {
+                stream.reply(Reply::Ok(String::from("OK")));
+                stream.shutdown();
+                return Ok(());
+            }
+            Command::StartTls => {
+                stream.reply(Reply::ServiceReady(String::from("Go ahead")))?;
+                if let Stream::Unencryted(unencrypted_stream) = stream {
+                    if let Ok(encrypted_stream) = acceptor.accept(unencrypted_stream) {
+                        stream = Stream::Encrypted(encrypted_stream);
+                        info!("TLS enabled");
+                    } else {
+                        warn!("Failed to enable TLS");
+                        return Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe))
+                    }
+                }
+            }
+            Command::Auth(data) => {
+                debug!("{:?}", data.as_bytes());
+                let _written = stream.write(b"235 Authentication successful\r\n")?;
+            }
+            Command::Noop => {
+                stream.reply(Reply::Ok(String::from("OK")))?;
+            }
+            _ => {stream.reply(Reply::CommandNotImplemented(String::from("This server does not implement this command for now.")))?;},
         }
-        
     }
 }
 
