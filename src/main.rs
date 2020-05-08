@@ -68,7 +68,10 @@ impl Stream {
         }
 
         let command = match String::from_utf8(command) {
-            Ok(command) => command,
+            Ok(command) => {
+                debug!("\x1B[35m{:?}\x1B[0m", command);
+                command
+            },
             Err(e) => {
                 warn!("Server returned invalid utf8. {}", e);
                 return Err(std::io::Error::from(std::io::ErrorKind::InvalidData));
@@ -101,20 +104,10 @@ impl Stream {
 
 impl Read for Stream {
     fn read(&mut self, mut buffer: &mut [u8]) -> std::io::Result<usize> {
-        let bytes = match self {
+        match self {
             Stream::Encrypted(stream) => stream.read(&mut buffer),
             Stream::Unencryted(stream) => stream.read(&mut buffer)
-        };
-        if let Ok(bytes) = bytes {
-            if bytes > 0 {
-                if buffer[..bytes].ends_with(&[b'\r', b'\n']) {
-                    debug!("\x1B[35m{}\x1B[0m", String::from_utf8_lossy(&buffer[..bytes - 2]));
-                } else {
-                    debug!("\x1B[35m{}\x1B[0m", String::from_utf8_lossy(&buffer[..bytes]));
-                }
-            }
         }
-        bytes
     }
 }
 
