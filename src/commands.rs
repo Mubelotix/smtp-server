@@ -9,14 +9,34 @@ pub enum Command {
     Mail(String),
     Reset,
     Recipient(String),
-    Verify,
-    Expand,
+    Verify(String),
+    Expand(String),
     Help,
     Noop,
     Quit,
     Data,
     StartTls,
     Auth(String),
+}
+
+impl ToString for Command {
+    fn to_string(&self) -> String {
+        match self {
+            Command::Helo(domain) => format!("HELO {}\r\n", domain),
+            Command::Ehlo(domain) => format!("EHLO {}\r\n", domain),
+            Command::Mail(adress) => format!("MAIL FROM:<{}>\r\n", adress),
+            Command::Recipient(adress) => format!("RCPT TO:<{}>\r\n", adress),
+            Command::Data => "DATA\r\n".to_string(),
+            Command::Reset => "RSET\r\n".to_string(),
+            Command::Verify(user) => format!("VRFY {}\r\n", user),
+            Command::Expand(mailing_list) => format!("EXPN {}\r\n", mailing_list),
+            Command::Help => "HELP\r\n".to_string(),
+            Command::Noop => "NOOP\r\n".to_string(),
+            Command::Quit => "QUIT\r\n".to_string(),
+            Command::StartTls => "STARTTLS\r\n".to_string(),
+            Command::Auth(mechanism) => format!("AUTH {}\r\n", mechanism),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -70,8 +90,8 @@ impl std::str::FromStr for Command {
 
                 Ok(Command::Helo(domain))
             },
-            c if c.starts_with("VRFY ") => Ok(Command::Verify),
-            c if c.starts_with("EXPN ") => Ok(Command::Expand),
+            c if c.starts_with("VRFY ") => Ok(Command::Verify(String::new())),
+            c if c.starts_with("EXPN ") => Ok(Command::Expand(String::new())),
             c if c.starts_with("HELP ") => Ok(Command::Help),
             c if c.starts_with("NOOP ") => Ok(Command::Noop),
             c if c.starts_with("QUIT") => Ok(Command::Quit),
@@ -92,7 +112,5 @@ impl std::str::FromStr for Command {
             c if c.starts_with("STARTTLS") => Ok(Command::StartTls),
             _c => Err(ParsingCommandError::UnknownCommand),
         }
-
-        
     }
 }

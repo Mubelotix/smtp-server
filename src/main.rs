@@ -20,6 +20,27 @@ pub enum Stream {
     Unencryted(TcpStream),
 }
 
+impl Stream {
+    fn send_command(&mut self, command: Command) -> std::io::Result<()> {
+        let command = command.to_string();
+        let mut command = command.as_bytes();
+
+        let mut timeout = 0;
+        
+        while !command.is_empty() && timeout < 20 {
+            let written = self.write(command)?;
+            command = &command[written..];
+            timeout += 1;
+        }
+
+        if timeout == 20 {
+            warn!("Infinite loop cancelled");
+        }
+
+        Ok(())
+    }
+}
+
 impl Read for Stream {
     fn read(&mut self, mut buffer: &mut [u8]) -> std::io::Result<usize> {
         let bytes = match self {
