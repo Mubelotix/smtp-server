@@ -15,6 +15,7 @@ pub enum Command {
     Quit,
     Data,
     StartTls,
+    Auth(String),
 }
 
 #[derive(Debug)]
@@ -80,6 +81,10 @@ impl std::str::FromStr for Command {
             c if c.starts_with("RCPT TO:") => {
                 let to = get_all_between(command, "<", ">");
                 Ok(Command::Recipient(to.to_string()))
+            },
+            c if c.starts_with("AUTH ") => {
+                let data = &command[5..];
+                Ok(Command::Auth(data.to_string()))
             },
             c if c.starts_with("DATA") => Ok(Command::Data),
             c if c.starts_with("RSET") => Ok(Command::Reset),

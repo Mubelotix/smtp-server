@@ -113,6 +113,7 @@ fn handle_client(stream: TcpStream) -> std::io::Result<()> {
                 },
                 Command::Ehlo(domain) => {
                     let _written = stream.write(format!("250-{} greets {}\r\n", DOMAIN, domain).as_bytes())?;
+                    let _written = stream.write(b"250-AUTH PLAIN\r\n")?;
                     let _written = stream.write(b"250 STARTTLS\r\n")?;
                 }
                 Command::Recipient(address) => {
@@ -160,7 +161,6 @@ fn handle_client(stream: TcpStream) -> std::io::Result<()> {
                 Command::Quit => {
                     let _written = stream.write(b"221 OK\r\n");
                     stream.shutdown();
-                    debug!("Connection closed");
                     return Ok(());
                 }
                 Command::StartTls => {
@@ -174,6 +174,10 @@ fn handle_client(stream: TcpStream) -> std::io::Result<()> {
                             return Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe))
                         }
                     }
+                }
+                Command::Auth(data) => {
+                    debug!("{:?}", data.as_bytes());
+                    let _written = stream.write(b"235 Authentication successful\r\n")?;
                 }
                 Command::Noop => {
                     let _written = stream.write(b"250 OK\r\n")?;
@@ -225,6 +229,8 @@ fn main() -> std::io::Result<()> {
         }
         
         handle_client(stream);
+
+        debug!("Connection closed");
     }
     Ok(())
 }
