@@ -11,7 +11,9 @@ use std::time::Duration;
 /// TODO support 8-bit https://tools.ietf.org/html/rfc1652
 
 pub mod commands;
+pub mod replies;
 use commands::Command;
+use replies::Reply;
 
 pub const DOMAIN: &str = "mubelotix.dev";
 
@@ -30,6 +32,25 @@ impl Stream {
         while !command.is_empty() && timeout < 20 {
             let written = self.write(command)?;
             command = &command[written..];
+            timeout += 1;
+        }
+
+        if timeout == 20 {
+            warn!("Infinite loop cancelled");
+        }
+
+        Ok(())
+    }
+
+    fn reply(&mut self, reply: Reply) -> std::io::Result<()> {
+        let reply = reply.to_string();
+        let mut reply = reply.as_bytes();
+
+        let mut timeout = 0;
+        
+        while !reply.is_empty() && timeout < 20 {
+            let written = self.write(reply)?;
+            reply = &reply[written..];
             timeout += 1;
         }
 
@@ -131,20 +152,18 @@ fn handle_client(stream: TcpStream) -> std::io::Result<()> {
         if let Ok(command) = rep.parse::<Command>() {
             match command {
                 Command::Helo(_) => {
-                    let _written = stream.write(format!("250 {}\r\n", DOMAIN).as_bytes())?;
+                    stream.reply(Reply::Ok(DOMAIN.to_string()))?;
                 },
                 Command::Ehlo(domain) => {
-                    let _written = stream.write(format!("250-{} greets {}\r\n", DOMAIN, domain).as_bytes())?;
-                    let _written = stream.write(b"250-AUTH PLAIN\r\n")?;
-                    let _written = stream.write(b"250 STARTTLS\r\n")?;
+                    stream.reply(Reply::Ok(format!("{} greets {}\nAUTH PLAIN\nSTARTTLS", DOMAIN, domain)))?;
                 }
                 Command::Recipient(address) => {
                     if address.ends_with(DOMAIN) {
                         to.push(address);
 
-                        let _written = stream.write(b"250 OK\r\n")?;
+                        stream.reply(Reply::Ok(String::from("OK")))?;
                     } else {
-                        let _written = stream.write(format!("455 The address {} is not hosted on this domain ({})\r\n", address, DOMAIN).as_bytes())?;
+                        stream.reply(Reply::UnableToAccomodateParameters(format!("The address {} is not hosted on this domain ({})", address, DOMAIN)))?;
                     }
                 }
                 Command::Mail(adress) => {
@@ -152,14 +171,14 @@ fn handle_client(stream: TcpStream) -> std::io::Result<()> {
                     to = Vec::new();
                     body = None;
 
-                    let _written = stream.write(b"250 OK\r\n")?;
+                    stream.reply(Reply::Ok(String::from("OK")))?;
                 }
                 Command::Reset => {
                     from = None;
                     to = Vec::new();
                     body = None;
 
-                    let _written = stream.write(b"250 OK\r\n")?;
+                    stream.reply(Reply::Ok(String::from("OK")))?;
                 }
                 Command::Data => {
                     let _written = stream.write(b"354\r\n")?;
@@ -178,15 +197,15 @@ fn handle_client(stream: TcpStream) -> std::io::Result<()> {
                     
                     body = Some(mail);
 
-                    let _written = stream.write(b"250 OK\r\n")?;
+                    stream.reply(Reply::Ok(String::from("OK")))?;
                 }
                 Command::Quit => {
-                    let _written = stream.write(b"221 OK\r\n");
+                    stream.reply(Reply::Ok(String::from("OK")))?;
                     stream.shutdown();
                     return Ok(());
                 }
                 Command::StartTls => {
-                    let _written = stream.write(b"220 Go ahead\r\n");
+                    stream.reply(Reply::ServiceReady(String::from("Go ahead")))?;
                     if let Stream::Unencryted(unencrypted_stream) = stream {
                         if let Ok(encrypted_stream) = acceptor.accept(unencrypted_stream) {
                             stream = Stream::Encrypted(encrypted_stream);
@@ -202,12 +221,12 @@ fn handle_client(stream: TcpStream) -> std::io::Result<()> {
                     let _written = stream.write(b"235 Authentication successful\r\n")?;
                 }
                 Command::Noop => {
-                    let _written = stream.write(b"250 OK\r\n")?;
+                    stream.reply(Reply::Ok(String::from("OK")))?;
                 }
-                _ => {let written = stream.write(b"502 Command not implemented\r\n")?;},
+                _ => {stream.reply(Reply::CommandNotImplemented(String::from("This server does not implement this command for now.")))?;},
             }
         } else {
-            let _written = stream.write(b"500 Syntax error, command unrecognized\r\n")?;
+            stream.reply(Reply::SyntaxError(String::from("That command was strange!")))?;
         }
         
     }
