@@ -25,8 +25,9 @@ pub enum Stream {
 impl Stream {
     fn send_command(&mut self, command: Command) -> std::io::Result<()> {
         let command = command.to_string();
-        let mut command = command.as_bytes();
+        debug!("\x1B[35m{:?}\x1B[0m", command);
 
+        let mut command = command.as_bytes();
         let mut timeout = 0;
         
         while !command.is_empty() && timeout < 20 {
@@ -44,8 +45,9 @@ impl Stream {
 
     fn reply(&mut self, reply: Reply) -> std::io::Result<()> {
         let reply = reply.to_string();
-        let mut reply = reply.as_bytes();
+        debug!("\x1B[32m{:?}\x1B[0m", reply);
 
+        let mut reply = reply.as_bytes();
         let mut timeout = 0;
         
         while !reply.is_empty() && timeout < 20 {
@@ -83,18 +85,10 @@ impl Read for Stream {
 
 impl Write for Stream {
     fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
-        let bytes = match self {
+        match self {
             Stream::Encrypted(stream) => stream.write(&buffer),
             Stream::Unencryted(stream) => stream.write(&buffer)
-        };
-        if let Ok(bytes) = bytes {
-            if buffer[..bytes].ends_with(&[b'\r', b'\n']) {
-                debug!("\x1B[32m{}\x1B[0m", String::from_utf8_lossy(&buffer[..bytes - 2]));
-            } else {
-                debug!("\x1B[32m{}\x1B[0m", String::from_utf8_lossy(&buffer[..bytes]));
-            }
         }
-        bytes
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
@@ -125,7 +119,7 @@ fn handle_client(stream: TcpStream) -> std::io::Result<()> {
     // 220 or 554 but wait the Quit while responding 503
 
     let mut stream = Stream::Unencryted(stream);
-    let _read = stream.write(b"220 mubelotix.dev Rust SMTP Server v1.0\r\n")?;
+    stream.reply(Reply::ServiceReady(String::from("220 mubelotix.dev Rust SMTP Server v1.0")))?;
 
     let mut file = File::open("test.pfx").unwrap();
     let mut identity = vec![];
