@@ -1,3 +1,5 @@
+#![allow(clippy::cognitive_complexity)]
+
 use std::net::{TcpListener, TcpStream};
 use std::io::{prelude::*, ErrorKind};
 #[allow(unused_imports)]
@@ -192,8 +194,9 @@ fn handle_client(stream: TcpStream) -> std::io::Result<()> {
 
                     stream.reply(Reply::Ok(String::from("OK")))?;
                 }
+                #[allow(unused_must_use)]
                 Command::Quit => {
-                    stream.reply(Reply::Ok(String::from("OK")))?;
+                    stream.reply(Reply::Ok(String::from("OK")));
                     stream.shutdown();
                     return Ok(());
                 }
@@ -261,10 +264,8 @@ fn main() -> std::io::Result<()> {
         } else {
             debug!("New client");
         }
-        
-        handle_client(stream);
 
-        debug!("Connection closed");
+        debug!("Connection closed. Result: {:?}", handle_client(stream));
     }
     Ok(())
 }

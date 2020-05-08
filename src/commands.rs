@@ -43,7 +43,7 @@ impl ToString for Command {
 #[derive(Debug)]
 pub enum ParsingCommandError {
     UnknownCommand,
-    SyntaxErrorInParameter,
+    SyntaxErrorInParameter(&'static str),
 }
 
 impl std::str::FromStr for Command {
@@ -102,7 +102,7 @@ impl std::str::FromStr for Command {
 
                 let address = match command.parse::<EmailAdress>() {
                     Ok(address) => address,
-                    Err(e) => return Err(ParsingCommandError::SyntaxErrorInParameter)
+                    Err(e) => return Err(ParsingCommandError::SyntaxErrorInParameter(e))
                 };
                 Ok(Command::Verify(address))
             },
@@ -120,7 +120,7 @@ impl std::str::FromStr for Command {
 
                 let address = match command.parse::<EmailAdress>() {
                     Ok(address) => address,
-                    Err(e) => return Err(ParsingCommandError::SyntaxErrorInParameter)
+                    Err(e) => return Err(ParsingCommandError::SyntaxErrorInParameter(e))
                 };
 
                 Ok(Command::Mail(address))
@@ -135,7 +135,7 @@ impl std::str::FromStr for Command {
 
                 let address = match command.parse::<EmailAdress>() {
                     Ok(address) => address,
-                    Err(e) => return Err(ParsingCommandError::SyntaxErrorInParameter)
+                    Err(e) => return Err(ParsingCommandError::SyntaxErrorInParameter(e))
                 };
 
                 Ok(Command::Recipient(address))
