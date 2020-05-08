@@ -1,3 +1,4 @@
+#[allow(unused_imports)]
 use log::{trace, debug, info, warn, error};
 use string_tools::*;
 
@@ -89,7 +90,7 @@ impl std::str::FromStr for Command {
             c if c.starts_with("DATA") => Ok(Command::Data),
             c if c.starts_with("RSET") => Ok(Command::Reset),
             c if c.starts_with("STARTTLS") => Ok(Command::StartTls),
-            c => Err(ParsingCommandError::UnknownCommand),
+            _c => Err(ParsingCommandError::UnknownCommand),
         }
 
         

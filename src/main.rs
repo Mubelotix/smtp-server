@@ -1,5 +1,6 @@
 use std::net::{TcpListener, TcpStream};
 use std::io::{prelude::*, ErrorKind};
+#[allow(unused_imports)]
 use log::{trace, debug, info, warn, error};
 use native_tls::{Identity, TlsAcceptor, TlsStream};
 use std::fs::File;
