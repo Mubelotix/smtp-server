@@ -1,15 +1,16 @@
 #[allow(unused_imports)]
 use log::{trace, debug, info, warn, error};
 use string_tools::*;
+use crate::address::EmailAdress;
 
 #[derive(Debug)]
 pub enum Command {
     Helo(String),
     Ehlo(String),
-    Mail(String),
+    Mail(EmailAdress),
     Reset,
-    Recipient(String),
-    Verify(String),
+    Recipient(EmailAdress),
+    Verify(EmailAdress),
     Expand(String),
     Help,
     Noop,
@@ -41,14 +42,15 @@ impl ToString for Command {
 
 #[derive(Debug)]
 pub enum ParsingCommandError {
-    UnknownCommand
+    UnknownCommand,
+    SyntaxErrorInParameter,
 }
 
 impl std::str::FromStr for Command {
     
     type Err = ParsingCommandError;
 
-    fn from_str(command: &str) -> Result<Command, Self::Err> {
+    fn from_str(mut command: &str) -> Result<Command, Self::Err> {
         match command.to_ascii_uppercase() {
             c if c.starts_with("EHLO ") => {
                 let c = &command[5..];
@@ -90,18 +92,53 @@ impl std::str::FromStr for Command {
 
                 Ok(Command::Helo(domain))
             },
-            c if c.starts_with("VRFY ") => Ok(Command::Verify(String::new())),
+            c if c.starts_with("VRFY ") => {
+                command = &command[5..];
+                command = command.trim();
+
+                if command.starts_with('<') && command.ends_with('>') {
+                    command = &command[1..command.len() - 1];
+                }
+
+                let address = match command.parse::<EmailAdress>() {
+                    Ok(address) => address,
+                    Err(e) => return Err(ParsingCommandError::SyntaxErrorInParameter)
+                };
+                Ok(Command::Verify(address))
+            },
             c if c.starts_with("EXPN ") => Ok(Command::Expand(String::new())),
             c if c.starts_with("HELP ") => Ok(Command::Help),
             c if c.starts_with("NOOP ") => Ok(Command::Noop),
             c if c.starts_with("QUIT") => Ok(Command::Quit),
             c if c.starts_with("MAIL FROM:") => {
-                let from = get_all_between(command, "<", ">");
-                Ok(Command::Mail(from.to_string()))
+                command = &command[10..];
+                command = command.trim();
+
+                if command.starts_with('<') && command.ends_with('>') {
+                    command = &command[1..command.len() - 1];
+                }
+
+                let address = match command.parse::<EmailAdress>() {
+                    Ok(address) => address,
+                    Err(e) => return Err(ParsingCommandError::SyntaxErrorInParameter)
+                };
+
+                Ok(Command::Mail(address))
             },
             c if c.starts_with("RCPT TO:") => {
-                let to = get_all_between(command, "<", ">");
-                Ok(Command::Recipient(to.to_string()))
+                command = &command[8..];
+                command = command.trim();
+
+                if command.starts_with('<') && command.ends_with('>') {
+                    command = &command[1..command.len() - 1];
+                }
+
+                let address = match command.parse::<EmailAdress>() {
+                    Ok(address) => address,
+                    Err(e) => return Err(ParsingCommandError::SyntaxErrorInParameter)
+                };
+
+                Ok(Command::Recipient(address))
             },
             c if c.starts_with("AUTH ") => {
                 let data = &command[5..];

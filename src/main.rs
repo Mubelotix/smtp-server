@@ -12,6 +12,7 @@ use std::time::Duration;
 
 pub mod commands;
 pub mod replies;
+pub mod address;
 use commands::Command;
 use replies::Reply;
 
@@ -116,10 +117,8 @@ impl Stream {
 }
 
 fn handle_client(stream: TcpStream) -> std::io::Result<()> {
-    // 220 or 554 but wait the Quit while responding 503
-
     let mut stream = Stream::Unencryted(stream);
-    stream.reply(Reply::ServiceReady(String::from("220 mubelotix.dev Rust SMTP Server v1.0")))?;
+    stream.reply(Reply::ServiceReady(String::from("mubelotix.dev Rust SMTP Server v1.0")))?;
 
     let mut file = File::open("test.pfx").unwrap();
     let mut identity = vec![];
@@ -152,7 +151,7 @@ fn handle_client(stream: TcpStream) -> std::io::Result<()> {
                     stream.reply(Reply::Ok(format!("{} greets {}\nAUTH PLAIN\nSTARTTLS", DOMAIN, domain)))?;
                 }
                 Command::Recipient(address) => {
-                    if address.ends_with(DOMAIN) {
+                    if address.domain == DOMAIN {
                         to.push(address);
 
                         stream.reply(Reply::Ok(String::from("OK")))?;
