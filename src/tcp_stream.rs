@@ -69,6 +69,51 @@ impl Stream {
         Ok(command.parse())
     }
 
+    pub fn read_reply(&mut self) -> std::io::Result<Result<Reply, &'static str>> {
+        let mut reply = Vec::new();
+
+        let mut requests = 0;
+        let mut is_ended = false;
+        while !is_ended && requests < 30 {
+            let mut t = [0; 128];
+            let i = self.read(&mut t)?;
+
+            if i == 0 {
+                sleep(Duration::from_millis(10));
+                continue;
+            }
+
+            requests += 1;
+            reply.append(&mut t[..i].to_vec());
+
+            if reply.ends_with(&[b'\r', b'\n']) {
+                let mut determinant = 3;
+                let mut last_was_carriage_return = false;
+                for (idx, character) in reply.iter().enumerate() {
+                    if idx == determinant && character == &b' ' {
+                        is_ended = true;
+                        break;
+                    }
+
+                    if character == &b'\r' {
+                        last_was_carriage_return = true;
+                    } else if last_was_carriage_return && character == &b'\n' {
+                        determinant = idx + 4;
+                    }
+                }
+            }
+        }
+
+        if requests == 30 {
+            warn!("Infinite loop cancelled");
+        }
+
+        match String::from_utf8(reply) {
+            Ok(reply) => Ok(reply.parse()),
+            Err(_e) => Ok(Err("Invalid utf8")),
+        }
+    }
+
     pub fn send_reply(&mut self, reply: Reply) -> std::io::Result<()> {
         let reply = reply.to_string();
         debug!("\x1B[32m{:?}\x1B[0m", reply);

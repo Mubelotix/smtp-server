@@ -12,6 +12,7 @@ pub mod address;
 pub mod commands;
 pub mod replies;
 pub mod tcp_stream;
+pub mod mta;
 use commands::{Command, ParsingCommandError};
 use replies::Reply;
 use tcp_stream::Stream;
