@@ -143,16 +143,11 @@ impl Stream {
     }
 }
 
-fn handle_client(stream: TcpStream) -> std::io::Result<()> {
+fn handle_client(stream: TcpStream, tls_acceptor: Option<Arc<TlsAcceptor>>) -> std::io::Result<()> {
     let mut stream = Stream::Unencryted(stream);
     stream.send_reply(Reply::ServiceReady(String::from("mubelotix.dev Rust SMTP Server v1.0")))?;
 
-    let mut file = File::open("test.pfx").unwrap();
-    let mut identity = vec![];
-    file.read_to_end(&mut identity).unwrap();
-    let identity = Identity::from_pkcs12(&identity, "testingcert").unwrap();
-    let acceptor = TlsAcceptor::new(identity).unwrap();
-    let acceptor = Arc::new(acceptor);
+    assert!(tls_acceptor.is_some());
 
     let mut from = None;
     let mut to = Vec::new();
@@ -173,7 +168,7 @@ fn handle_client(stream: TcpStream) -> std::io::Result<()> {
                 stream.send_reply(Reply::Ok(DOMAIN.to_string()))?;
             },
             Command::Ehlo(domain) => {
-                stream.send_reply(Reply::Ok(format!("{} greets {}\nAUTH PLAIN\nSTARTTLS", DOMAIN, domain)))?;
+                stream.send_reply(Reply::Ok(format!("{} greets {}\nAUTH PLAIN{}", DOMAIN, domain, if tls_acceptor.is_some() {"\nSTARTTLS"} else {""})))?;
             }
             Command::Recipient(address) => {
                 if address.domain == DOMAIN {
@@ -224,15 +219,19 @@ fn handle_client(stream: TcpStream) -> std::io::Result<()> {
                 return Ok(());
             }
             Command::StartTls => {
-                stream.send_reply(Reply::ServiceReady(String::from("Go ahead")))?;
-                if let Stream::Unencryted(unencrypted_stream) = stream {
-                    if let Ok(encrypted_stream) = acceptor.accept(unencrypted_stream) {
-                        stream = Stream::Encrypted(encrypted_stream);
-                        info!("TLS enabled");
-                    } else {
-                        warn!("Failed to enable TLS");
-                        return Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe))
+                if let Some(tls_acceptor) = &tls_acceptor {
+                    stream.send_reply(Reply::ServiceReady(String::from("Go ahead")))?;
+                    if let Stream::Unencryted(unencrypted_stream) = stream {
+                        if let Ok(encrypted_stream) = tls_acceptor.accept(unencrypted_stream) {
+                            stream = Stream::Encrypted(encrypted_stream);
+                            info!("TLS enabled");
+                        } else {
+                            warn!("Failed to enable TLS");
+                            return Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe))
+                        }
                     }
+                } else {
+                    stream.send_reply(Reply::ActionNotTaken(String::from("TLS is not activated")))?;
                 }
             }
             Command::Auth(data) => {
@@ -254,18 +253,31 @@ fn main() -> std::io::Result<()> {
         (version: "1.1")
         (author: "Mubelotix <mubelotix@gmail.com>")
         (about: "Rust SMTP Server")
-        (@arg TLS: --tls +takes_value "Enable TLS by providing a pfx file.")
-        (@arg PORT: -p --port +takes_value default_value("25") "Set the listening port.")
+        (@arg PORT:     -p --port +takes_value default_value("25") "Set the listening port.")
+        (@arg TLS:      --tls requires("PASSWORD") requires("CERT") "Enable TLS.")
+        (@arg CERT:     -c --cert +takes_value "The certificate pfx file.")
+        (@arg PASSWORD: --password +takes_value "The password of the certificate.")
     ).get_matches();
 
     env_logger::init();
 
     let port: u16 = matches.value_of("PORT").unwrap_or("25").parse().unwrap_or(25);
-    let tls_cert_file = matches.value_of("TLS");
+    let tls_acceptor: Option<Arc<TlsAcceptor>> = if matches.occurrences_of("TLS") > 0 {
+        let mut file = File::open(matches.value_of("CERT").unwrap()).unwrap();
+        let mut identity = vec![];
+        file.read_to_end(&mut identity).unwrap();
+        let identity = Identity::from_pkcs12(&identity, matches.value_of("PASSWORD").unwrap()).unwrap();
+        let acceptor = TlsAcceptor::new(identity).unwrap();
+        let acceptor = Arc::new(acceptor);
+        
+        Some(acceptor)
+    } else {
+        None
+    };
 
-    info!("Launching SMTP server on port {}. TLS is {}.", port, if tls_cert_file.is_some() {"enabled"} else {"disabled"});
+    info!("Launching SMTP server on port {}. TLS is {}.", port, if tls_acceptor.is_some() {"enabled"} else {"disabled"});
 
-    let listener = match TcpListener::bind("0.0.0.0:25") {
+    let listener = match TcpListener::bind(format!("0.0.0.0:{}", port)) {
         Ok(listener) => listener,
         Err(e) if e.kind() == ErrorKind::PermissionDenied => {
             error!("The port {} requires sudo power.", port);
@@ -284,7 +296,7 @@ fn main() -> std::io::Result<()> {
             debug!("New client");
         }
 
-        debug!("Connection closed. Result: {:?}", handle_client(stream));
+        debug!("Connection closed. Result: {:?}", handle_client(stream, tls_acceptor.clone()));
     }
     Ok(())
 }
