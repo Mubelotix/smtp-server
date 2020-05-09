@@ -58,7 +58,7 @@ impl ToString for Reply {
 fn process_message(code: usize, message: &str) -> String {
     let original_lines = message.split('\n');
     let count = original_lines.clone().count();
-    
+
     let mut message = String::new();
 
     for (idx, line) in original_lines.enumerate() {
@@ -68,6 +68,6 @@ fn process_message(code: usize, message: &str) -> String {
             message.push_str(&format!("{}-{}\r\n", code, line));
         }
     }
-    
+
     message
 }

@@ -1,7 +1,7 @@
-#[allow(unused_imports)]
-use log::{trace, debug, info, warn, error};
-use string_tools::*;
 use crate::address::EmailAdress;
+#[allow(unused_imports)]
+use log::{debug, error, info, trace, warn};
+use string_tools::*;
 
 #[derive(Debug)]
 pub enum Command {
@@ -47,7 +47,6 @@ pub enum ParsingCommandError {
 }
 
 impl std::str::FromStr for Command {
-    
     type Err = ParsingCommandError;
 
     fn from_str(mut command: &str) -> Result<Command, Self::Err> {
@@ -71,7 +70,7 @@ impl std::str::FromStr for Command {
                 }
 
                 Ok(Command::Ehlo(domain))
-            },
+            }
             c if c.starts_with("HELO ") => {
                 let c = &command[5..];
 
@@ -91,7 +90,7 @@ impl std::str::FromStr for Command {
                 }
 
                 Ok(Command::Helo(domain))
-            },
+            }
             c if c.starts_with("VRFY ") => {
                 command = &command[5..];
                 command = command.trim();
@@ -102,10 +101,10 @@ impl std::str::FromStr for Command {
 
                 let address = match command.parse::<EmailAdress>() {
                     Ok(address) => address,
-                    Err(e) => return Err(ParsingCommandError::SyntaxErrorInParameter(e))
+                    Err(e) => return Err(ParsingCommandError::SyntaxErrorInParameter(e)),
                 };
                 Ok(Command::Verify(address))
-            },
+            }
             c if c.starts_with("EXPN ") => Ok(Command::Expand(String::new())),
             c if c.starts_with("HELP ") => Ok(Command::Help),
             c if c.starts_with("NOOP ") => Ok(Command::Noop),
@@ -120,11 +119,11 @@ impl std::str::FromStr for Command {
 
                 let address = match command.parse::<EmailAdress>() {
                     Ok(address) => address,
-                    Err(e) => return Err(ParsingCommandError::SyntaxErrorInParameter(e))
+                    Err(e) => return Err(ParsingCommandError::SyntaxErrorInParameter(e)),
                 };
 
                 Ok(Command::Mail(address))
-            },
+            }
             c if c.starts_with("RCPT TO:") => {
                 command = &command[8..];
                 command = command.trim();
@@ -135,15 +134,15 @@ impl std::str::FromStr for Command {
 
                 let address = match command.parse::<EmailAdress>() {
                     Ok(address) => address,
-                    Err(e) => return Err(ParsingCommandError::SyntaxErrorInParameter(e))
+                    Err(e) => return Err(ParsingCommandError::SyntaxErrorInParameter(e)),
                 };
 
                 Ok(Command::Recipient(address))
-            },
+            }
             c if c.starts_with("AUTH ") => {
                 let data = &command[5..];
                 Ok(Command::Auth(data.to_string()))
-            },
+            }
             c if c.starts_with("DATA") => Ok(Command::Data),
             c if c.starts_with("RSET") => Ok(Command::Reset),
             c if c.starts_with("STARTTLS") => Ok(Command::StartTls),
