@@ -21,7 +21,7 @@ pub const DOMAIN: &str = "mubelotix.dev";
 
 fn handle_client(stream: TcpStream, tls_acceptor: Option<Arc<TlsAcceptor>>) -> std::io::Result<()> {
     let mut stream = Stream::Unencryted(stream);
-    stream.send_reply(Reply::ServiceReady(String::from(
+    stream.send_reply(Reply::ServiceReady().with_message(String::from(
         "mubelotix.dev Rust SMTP Server v1.0",
     )))?;
 
@@ -35,7 +35,7 @@ fn handle_client(stream: TcpStream, tls_acceptor: Option<Arc<TlsAcceptor>>) -> s
         let command = match stream.read_command()? {
             Ok(command) => command,
             Err(e) => {
-                stream.send_reply(Reply::SyntaxError(String::from(
+                stream.send_reply(Reply::SyntaxError().with_message(String::from(
                     "That command was strange!",
                 )))?;
                 warn!("Failed to parse command: {:?}", e);
@@ -45,10 +45,10 @@ fn handle_client(stream: TcpStream, tls_acceptor: Option<Arc<TlsAcceptor>>) -> s
 
         match command {
             Command::Helo(_) => {
-                stream.send_reply(Reply::Ok(DOMAIN.to_string()))?;
+                stream.send_reply(Reply::Ok().with_message(DOMAIN.to_string()))?;
             }
             Command::Ehlo(domain) => {
-                stream.send_reply(Reply::Ok(format!(
+                stream.send_reply(Reply::Ok().with_message(format!(
                     "{} greets {}\nAUTH PLAIN{}",
                     DOMAIN,
                     domain,
@@ -63,9 +63,9 @@ fn handle_client(stream: TcpStream, tls_acceptor: Option<Arc<TlsAcceptor>>) -> s
                 if address.domain == DOMAIN {
                     to.push(address);
 
-                    stream.send_reply(Reply::Ok(String::from("OK")))?;
+                    stream.send_reply(Reply::Ok())?;
                 } else {
-                    stream.send_reply(Reply::UnableToAccomodateParameters(format!(
+                    stream.send_reply(Reply::UnableToAccomodateParameters().with_message(format!(
                         "The address {} is not hosted on this domain ({})",
                         address, DOMAIN
                     )))?;
@@ -76,17 +76,17 @@ fn handle_client(stream: TcpStream, tls_acceptor: Option<Arc<TlsAcceptor>>) -> s
                 to = Vec::new();
                 body = None;
 
-                stream.send_reply(Reply::Ok(String::from("OK")))?;
+                stream.send_reply(Reply::Ok())?;
             }
             Command::Reset => {
                 from = None;
                 to = Vec::new();
                 body = None;
 
-                stream.send_reply(Reply::Ok(String::from("OK")))?;
+                stream.send_reply(Reply::Ok())?;
             }
             Command::Data => {
-                let _written = stream.write(b"354\r\n")?;
+                stream.send_reply(Reply::ServiceReady())?;
 
                 let mut mail: Vec<u8> = Vec::new();
                 let mut buffer = [0; 512];
@@ -102,17 +102,17 @@ fn handle_client(stream: TcpStream, tls_acceptor: Option<Arc<TlsAcceptor>>) -> s
 
                 body = Some(mail);
 
-                stream.send_reply(Reply::Ok(String::from("OK")))?;
+                stream.send_reply(Reply::Ok())?;
             }
             #[allow(unused_must_use)]
             Command::Quit => {
-                stream.send_reply(Reply::Ok(String::from("OK")));
+                stream.send_reply(Reply::Ok());
                 stream.shutdown();
                 return Ok(());
             }
             Command::StartTls => {
                 if let Some(tls_acceptor) = &tls_acceptor {
-                    stream.send_reply(Reply::ServiceReady(String::from("Go ahead")))?;
+                    stream.send_reply(Reply::ServiceReady())?;
                     if let Stream::Unencryted(unencrypted_stream) = stream {
                         if let Ok(encrypted_stream) = tls_acceptor.accept(unencrypted_stream) {
                             stream = Stream::Encrypted(encrypted_stream);
@@ -124,7 +124,7 @@ fn handle_client(stream: TcpStream, tls_acceptor: Option<Arc<TlsAcceptor>>) -> s
                     }
                 } else {
                     stream
-                        .send_reply(Reply::ActionNotTaken(String::from("TLS is not activated")))?;
+                        .send_reply(Reply::ActionNotTaken().with_message(String::from("TLS can't be activated")))?;
                 }
             }
             Command::Auth(data) => {
@@ -132,12 +132,10 @@ fn handle_client(stream: TcpStream, tls_acceptor: Option<Arc<TlsAcceptor>>) -> s
                 let _written = stream.write(b"235 Authentication successful\r\n")?;
             }
             Command::Noop => {
-                stream.send_reply(Reply::Ok(String::from("OK")))?;
+                stream.send_reply(Reply::Ok())?;
             }
             _ => {
-                stream.send_reply(Reply::CommandNotImplemented(String::from(
-                    "This server does not implement this command for now.",
-                )))?;
+                stream.send_reply(Reply::CommandNotImplemented())?;
             }
         }
     }
