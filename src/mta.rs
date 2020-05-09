@@ -27,6 +27,8 @@ mod tests {
 
     #[test]
     fn transfert_to_google() {
+        env_logger::try_init();
+
         transfert_mail(EmailAdress {
             username: String::from("mubelotix"),
             domain: String::from("gmail.com"),
