@@ -13,14 +13,14 @@ pub fn transfert_mail(to: EmailAdress) -> std::io::Result<()> {
 
     // TODO select correct server in the iterator
     let mda_mx = response.iter().next().unwrap();
-    let mda_address = mda_mx.exchange().to_string();
+    let mut mda_address = mda_mx.exchange().to_string();
     debug!("Connecting to {}.", mda_address);
     let mda = resolver.lookup_ip(&mda_address).unwrap().iter().next().unwrap();
 
     let mut stream = Stream::Unencryted(TcpStream::connect((mda, 25))?);
     
     if let Ok(Ok(Reply{reply_type: ReplyType::ServiceReady, message})) = stream.read_reply() {
-        println!("{}", message);
+        mda_address = string_tools::get_all_before(&message, " ").to_string();
         stream.send_command(Command::Ehlo("mubelotix.dev".to_string()))?;
     } else {
         warn!("Service is not ready");
@@ -31,19 +31,20 @@ pub fn transfert_mail(to: EmailAdress) -> std::io::Result<()> {
         if message.contains("\nSTARTTLS\n") {
             stream.send_command(Command::StartTls)?;
 
-            println!("{:?}", stream.read_reply());
-
-            sleep(Duration::from_secs(1));
-
-            if let Stream::Unencryted(old_stream) = stream {
-                let connector = TlsConnector::new().unwrap();
-                match connector.connect("mx.google.com", old_stream) {
-                    Ok(new_stream) => {
-                        println!("ENABLED");
-                        stream = Stream::Encrypted(new_stream)
-                    },
-                    Err(e) => panic!("Failed to enable TLS {}", e),
-                };
+            if let Ok(Ok(Reply{reply_type: ReplyType::ServiceReady, message: _})) = stream.read_reply() {
+                if let Stream::Unencryted(old_stream) = stream {
+                    let connector = TlsConnector::new().unwrap();
+                    match connector.connect(&mda_address, old_stream) {
+                        Ok(new_stream) => {
+                            debug!("Tls enabled");
+                            stream = Stream::Encrypted(new_stream)
+                        },
+                        Err(e) => {
+                            warn!("Failed to enable TLS {}", e);
+                            return Err(std::io::Error::from(std::io::ErrorKind::Other));
+                        },
+                    };
+                }
             }
         }
         stream.send_command(Command::Ehlo("mubelotix.dev".to_string()))?;
