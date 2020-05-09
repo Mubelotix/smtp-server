@@ -1,147 +1,23 @@
 #![allow(clippy::cognitive_complexity)]
-
 use std::net::{TcpListener, TcpStream};
 use std::io::{prelude::*, ErrorKind};
 #[allow(unused_imports)]
 use log::{trace, debug, info, warn, error};
-use native_tls::{Identity, TlsAcceptor, TlsStream};
+use native_tls::{Identity, TlsAcceptor};
 use std::fs::File;
 use std::sync::Arc;
-use std::thread::sleep;
-use std::time::Duration;
 
 /// TODO support 8-bit https://tools.ietf.org/html/rfc1652
 
 pub mod commands;
 pub mod replies;
 pub mod address;
+pub mod tcp_stream;
 use commands::{Command, ParsingCommandError};
 use replies::Reply;
+use tcp_stream::Stream;
 
 pub const DOMAIN: &str = "mubelotix.dev";
-
-pub enum Stream {
-    Encrypted(TlsStream<TcpStream>),
-    Unencryted(TcpStream),
-}
-
-impl Stream {
-    fn send_command(&mut self, command: Command) -> std::io::Result<()> {
-        let command = command.to_string();
-        debug!("\x1B[35m{:?}\x1B[0m", command);
-
-        let mut command = command.as_bytes();
-        let mut timeout = 0;
-        
-        while !command.is_empty() && timeout < 20 {
-            let written = self.write(command)?;
-            command = &command[written..];
-            timeout += 1;
-        }
-
-        if timeout == 20 {
-            warn!("Infinite loop cancelled");
-        }
-
-        Ok(())
-    }
-
-    fn read_command(&mut self) -> std::io::Result<Result<Command, ParsingCommandError>> {
-        let mut command = Vec::new();
-
-        let mut requests = 0;
-        while !command.ends_with(&[0x0D, 0x0A]) && requests < 30 {
-            let mut t = [0;128];
-            let i = self.read(&mut t)?;
-            
-            if i == 0 {
-                sleep(Duration::from_millis(10));
-                continue;
-            }
-
-            requests += 1;
-            command.append(&mut t[..i].to_vec());
-        }
-
-        if requests == 30 {
-            warn!("Infinite loop cancelled");
-        }
-
-        let command = match String::from_utf8(command) {
-            Ok(command) => {
-                debug!("\x1B[35m{:?}\x1B[0m", command);
-                command
-            },
-            Err(e) => {
-                warn!("Server returned invalid utf8. {}", e);
-                return Err(std::io::Error::from(std::io::ErrorKind::InvalidData));
-            },
-        };
-
-        Ok(command.parse())
-    }
-
-    fn send_reply(&mut self, reply: Reply) -> std::io::Result<()> {
-        let reply = reply.to_string();
-        debug!("\x1B[32m{:?}\x1B[0m", reply);
-
-        let mut reply = reply.as_bytes();
-        let mut timeout = 0;
-        
-        while !reply.is_empty() && timeout < 20 {
-            let written = self.write(reply)?;
-            reply = &reply[written..];
-            timeout += 1;
-        }
-
-        if timeout == 20 {
-            warn!("Infinite loop cancelled");
-        }
-
-        Ok(())
-    }
-}
-
-impl Read for Stream {
-    fn read(&mut self, mut buffer: &mut [u8]) -> std::io::Result<usize> {
-        match self {
-            Stream::Encrypted(stream) => stream.read(&mut buffer),
-            Stream::Unencryted(stream) => stream.read(&mut buffer)
-        }
-    }
-}
-
-impl Write for Stream {
-    fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
-        match self {
-            Stream::Encrypted(stream) => stream.write(&buffer),
-            Stream::Unencryted(stream) => stream.write(&buffer)
-        }
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        match self {
-            Stream::Encrypted(stream) => stream.flush(),
-            Stream::Unencryted(stream) => stream.flush()
-        }
-    }
-}
-
-impl Stream {
-    fn shutdown(&mut self) -> std::io::Result<()> {
-        match self {
-            Stream::Encrypted(stream) => stream.shutdown(),
-            Stream::Unencryted(stream) => stream.shutdown(std::net::Shutdown::Both)
-        }
-    }
-
-    fn is_encrypted(&self) -> bool {
-        match self {
-            Stream::Encrypted(_) => true,
-            Stream::Unencryted(_) => false
-        }
-    }
-}
 
 fn handle_client(stream: TcpStream, tls_acceptor: Option<Arc<TlsAcceptor>>) -> std::io::Result<()> {
     let mut stream = Stream::Unencryted(stream);
