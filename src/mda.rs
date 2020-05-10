@@ -95,7 +95,7 @@ pub fn handle_client(stream: TcpStream, tls_acceptor: Option<Arc<TlsAcceptor>>, 
                 stream.send_reply(Reply::Ok())?;
 
                 if let (to, Some(from)) = (to.remove(0), from.take()) {
-                    transfert_mail(to, from, body.unwrap(), domain)?;
+                    transfert_mail(to, from, body.unwrap(), domain);
                 }
             }
             #[allow(unused_must_use)]
