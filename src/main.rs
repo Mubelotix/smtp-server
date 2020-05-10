@@ -16,6 +16,7 @@ pub mod mta;
 use commands::{Command, ParsingCommandError};
 use replies::Reply;
 use tcp_stream::Stream;
+use address::EmailAddress;
 
 pub const DOMAIN: &str = "mubelotix.dev";
 
@@ -27,9 +28,9 @@ fn handle_client(stream: TcpStream, tls_acceptor: Option<Arc<TlsAcceptor>>) -> s
 
     assert!(tls_acceptor.is_some());
 
-    let mut from = None;
+    let mut from: Option<EmailAddress> = None;
     let mut to = Vec::new();
-    let mut body = None;
+    let mut body: Option<String> = None;
 
     loop {
         let command = match stream.read_command()? {
@@ -64,11 +65,17 @@ fn handle_client(stream: TcpStream, tls_acceptor: Option<Arc<TlsAcceptor>>) -> s
                     to.push(address);
 
                     stream.send_reply(Reply::Ok())?;
-                } else {
-                    stream.send_reply(Reply::UnableToAccomodateParameters().with_message(format!(
-                        "The address {} is not hosted on this domain ({})",
-                        address, DOMAIN
-                    )))?;
+                } else if let Some(from) = &from {
+                    if from.domain == DOMAIN {
+                        to.push(address);
+
+                        stream.send_reply(Reply::Ok())?;
+                    } else {
+                        stream.send_reply(Reply::UnableToAccomodateParameters().with_message(format!(
+                            "The address {} is not hosted on this domain ({})",
+                            address, DOMAIN
+                        )))?;
+                    }
                 }
             }
             Command::Mail(adress) => {
@@ -97,12 +104,16 @@ fn handle_client(stream: TcpStream, tls_acceptor: Option<Arc<TlsAcceptor>>) -> s
                 if let Ok(mut file) = std::fs::File::create("mail.txt") {
                     file.write_all(&mail)?;
                 }
-                let mail = String::from_utf8_lossy(&mail);
+                let mail = String::from_utf8(mail).unwrap();
                 info!("Received mail: {}", mail);
 
                 body = Some(mail);
 
                 stream.send_reply(Reply::Ok())?;
+
+                if let (to, Some(from)) = (to.remove(0), from.take()) {
+                    mta::transfert_mail(to, from, body.unwrap())?;
+                }
             }
             #[allow(unused_must_use)]
             Command::Quit => {

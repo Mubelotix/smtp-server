@@ -1,4 +1,4 @@
-use crate::address::EmailAdress;
+use crate::address::EmailAddress;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use string_tools::*;
@@ -7,10 +7,10 @@ use string_tools::*;
 pub enum Command {
     Helo(String),
     Ehlo(String),
-    Mail(EmailAdress),
+    Mail(EmailAddress),
     Reset,
-    Recipient(EmailAdress),
-    Verify(EmailAdress),
+    Recipient(EmailAddress),
+    Verify(EmailAddress),
     Expand(String),
     Help,
     Noop,
@@ -99,7 +99,7 @@ impl std::str::FromStr for Command {
                     command = &command[1..command.len() - 1];
                 }
 
-                let address = match command.parse::<EmailAdress>() {
+                let address = match command.parse::<EmailAddress>() {
                     Ok(address) => address,
                     Err(e) => return Err(ParsingCommandError::SyntaxErrorInParameter(e)),
                 };
@@ -117,7 +117,7 @@ impl std::str::FromStr for Command {
                     command = &command[1..command.len() - 1];
                 }
 
-                let address = match command.parse::<EmailAdress>() {
+                let address = match command.parse::<EmailAddress>() {
                     Ok(address) => address,
                     Err(e) => return Err(ParsingCommandError::SyntaxErrorInParameter(e)),
                 };
@@ -132,7 +132,7 @@ impl std::str::FromStr for Command {
                     command = &command[1..command.len() - 1];
                 }
 
-                let address = match command.parse::<EmailAdress>() {
+                let address = match command.parse::<EmailAddress>() {
                     Ok(address) => address,
                     Err(e) => return Err(ParsingCommandError::SyntaxErrorInParameter(e)),
                 };

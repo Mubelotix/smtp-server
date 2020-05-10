@@ -3,11 +3,12 @@ use log::{debug, error, info, trace, warn};
 use std::net::{*, ToSocketAddrs};
 use native_tls::TlsConnector;
 use trust_dns_resolver::Resolver;
+use std::io::prelude::*;
 use trust_dns_resolver::config::*;
-use crate::{address::EmailAdress, tcp_stream::Stream, commands::Command, replies::{ReplyType, Reply}};
+use crate::{address::EmailAddress, tcp_stream::Stream, commands::Command, replies::{ReplyType, Reply}};
 use std::{net::TcpStream, thread::sleep, time::Duration};
 
-pub fn transfert_mail(to: EmailAdress) -> std::io::Result<()> {
+pub fn transfert_mail(to: EmailAddress, from: EmailAddress, mail: String) -> std::io::Result<()> {
     let resolver = Resolver::new(ResolverConfig::default(), ResolverOpts::default()).unwrap();
     let response = resolver.mx_lookup(&to.domain).unwrap();
 
@@ -19,6 +20,7 @@ pub fn transfert_mail(to: EmailAdress) -> std::io::Result<()> {
 
     let mut stream = Stream::Unencryted(TcpStream::connect((mda, 25))?);
     
+    // Get the init message and send Ehlo
     if let Ok(Ok(Reply{reply_type: ReplyType::ServiceReady, message})) = stream.read_reply() {
         mda_address = string_tools::get_all_before(&message, " ").to_string();
         stream.send_command(Command::Ehlo("mubelotix.dev".to_string()))?;
@@ -27,6 +29,7 @@ pub fn transfert_mail(to: EmailAdress) -> std::io::Result<()> {
         return Err(std::io::Error::from(std::io::ErrorKind::Other));
     }
     
+    // Get the Ehlo response
     if let Ok(Ok(Reply{reply_type: ReplyType::Ok, message})) = stream.read_reply() {
         if message.contains("\nSTARTTLS\n") {
             stream.send_command(Command::StartTls)?;
@@ -37,7 +40,12 @@ pub fn transfert_mail(to: EmailAdress) -> std::io::Result<()> {
                     match connector.connect(&mda_address, old_stream) {
                         Ok(new_stream) => {
                             debug!("Tls enabled");
-                            stream = Stream::Encrypted(new_stream)
+                            stream = Stream::Encrypted(new_stream);
+                            stream.send_command(Command::Ehlo("mubelotix.dev".to_string()))?;
+
+                            if let Ok(Ok(Reply{reply_type: ReplyType::Ok, message})) = stream.read_reply() {
+                                println!("{:?}", message);
+                            }
                         },
                         Err(e) => {
                             warn!("Failed to enable TLS {}", e);
@@ -47,11 +55,20 @@ pub fn transfert_mail(to: EmailAdress) -> std::io::Result<()> {
                 }
             }
         }
-        stream.send_command(Command::Ehlo("mubelotix.dev".to_string()))?;
     } else {
         warn!("Service is not ready");
         return Err(std::io::Error::from(std::io::ErrorKind::Other));
     }
+
+    stream.send_command(Command::Mail(from));
+    stream.read_reply();
+    stream.send_command(Command::Recipient(to));
+    stream.read_reply();
+    stream.send_command(Command::Data);
+    stream.read_reply();
+    stream.write(mail.as_bytes());
+    stream.read_reply();
+    stream.send_command(Command::Quit);
     
     Ok(())
 }
@@ -59,15 +76,15 @@ pub fn transfert_mail(to: EmailAdress) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::address::EmailAdress;
+    use crate::address::EmailAddress;
 
     #[test]
     fn transfert_to_google() {
         env_logger::try_init();
 
-        transfert_mail(EmailAdress {
+        /*transfert_mail(EmailAddress {
             username: String::from("mubelotix"),
             domain: String::from("gmail.com"),
-        }).unwrap();
+        }).unwrap();*/
     }
 }

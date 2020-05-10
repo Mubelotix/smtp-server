@@ -1,22 +1,22 @@
 use string_tools::{get_all_after, get_all_before};
 
 #[derive(Debug, PartialEq)]
-pub struct EmailAdress {
+pub struct EmailAddress {
     pub username: String,
     pub domain: String,
 }
 
-impl std::fmt::Display for EmailAdress {
+impl std::fmt::Display for EmailAddress {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // TODO quoted strings
         write!(f, "{}@{}", self.username, self.domain)
     }
 }
 
-impl std::str::FromStr for EmailAdress {
+impl std::str::FromStr for EmailAddress {
     type Err = &'static str;
 
-    fn from_str(mut full_address: &str) -> Result<EmailAdress, Self::Err> {
+    fn from_str(mut full_address: &str) -> Result<EmailAddress, Self::Err> {
         full_address = full_address.trim();
         let mut username = get_all_before(full_address, "@").to_string();
         let domain = get_all_after(full_address, "@").to_string();
@@ -71,7 +71,7 @@ impl std::str::FromStr for EmailAdress {
             return Err("Domain name is not valid");
         }
 
-        Ok(EmailAdress { username, domain })
+        Ok(EmailAddress { username, domain })
     }
 }
 
@@ -82,7 +82,7 @@ mod test {
     #[test]
     fn adress_parsing() {
         assert_eq!(
-            Ok(EmailAdress {
+            Ok(EmailAddress {
                 username: String::from("mubelotix"),
                 domain: String::from("mubelotix.dev"),
             }),
@@ -90,7 +90,7 @@ mod test {
         );
 
         assert_eq!(
-            Ok(EmailAdress {
+            Ok(EmailAddress {
                 username: String::from("mubelotix"),
                 domain: String::from("mubelotix.dev"),
             }),
@@ -98,7 +98,7 @@ mod test {
         );
 
         assert_eq!(
-            Ok(EmailAdress {
+            Ok(EmailAddress {
                 username: String::from("mubelotix.test"),
                 domain: String::from("mubelotix.dev"),
             }),
@@ -107,10 +107,10 @@ mod test {
 
         assert_eq!(
             Err("Username is not valid"),
-            "mubelotix..test@mubelotix.dev".parse::<EmailAdress>()
+            "mubelotix..test@mubelotix.dev".parse::<EmailAddress>()
         );
         assert_eq!(
-            Ok(EmailAdress {
+            Ok(EmailAddress {
                 username: String::from("mubelotix..test"),
                 domain: String::from("mubelotix.dev"),
             }),
@@ -119,11 +119,11 @@ mod test {
 
         assert_eq!(
             Err("Domain name is not valid"),
-            "mubelotix@mubelotix..dev".parse::<EmailAdress>()
+            "mubelotix@mubelotix..dev".parse::<EmailAddress>()
         );
         assert_eq!(
             Err("Domain name is not valid"),
-            "mubelotix@mubeLotix.dev".parse::<EmailAdress>()
+            "mubelotix@mubeLotix.dev".parse::<EmailAddress>()
         );
     }
 }
