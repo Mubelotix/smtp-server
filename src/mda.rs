@@ -54,6 +54,7 @@ pub fn handle_client(stream: TcpStream, tls_acceptor: Option<Arc<TlsAcceptor>>, 
                         stream.send_reply(Reply::Ok())?;
                     } else {
                         stream.send_reply(Reply::UnableToAccomodateParameters().with_message(format!(
+                            //TODO transfert mail when sending from @domain to @otherdomain
                             "The address {} is not hosted on this domain ({})",
                             address, domain
                         )))?;
