@@ -4,7 +4,7 @@ use log::{debug, error, info, trace, warn};
 use native_tls::{Identity, TlsAcceptor};
 use std::fs::File;
 use std::io::{prelude::*, ErrorKind};
-use std::net::{TcpListener, TcpStream};
+use std::net::TcpListener;
 use std::sync::Arc;
 
 pub mod address;
@@ -13,144 +13,7 @@ pub mod commands;
 pub mod replies;
 pub mod tcp_stream;
 pub mod mta;
-use commands::{Command, ParsingCommandError};
-use replies::Reply;
-use tcp_stream::Stream;
-use address::EmailAddress;
-
-pub const DOMAIN: &str = "mubelotix.dev";
-
-fn handle_client(stream: TcpStream, tls_acceptor: Option<Arc<TlsAcceptor>>) -> std::io::Result<()> {
-    let mut stream = Stream::Unencryted(stream);
-    stream.send_reply(Reply::ServiceReady().with_message(String::from(
-        "mubelotix.dev Rust SMTP Server v1.0",
-    )))?;
-
-    assert!(tls_acceptor.is_some());
-
-    let mut from: Option<EmailAddress> = None;
-    let mut to = Vec::new();
-    let mut body: Option<String> = None;
-
-    loop {
-        let command = match stream.read_command()? {
-            Ok(command) => command,
-            Err(e) => {
-                stream.send_reply(Reply::SyntaxError().with_message(String::from(
-                    "That command was strange!",
-                )))?;
-                warn!("Failed to parse command: {:?}", e);
-                continue;
-            }
-        };
-
-        match command {
-            Command::Helo(_) => {
-                stream.send_reply(Reply::Ok().with_message(DOMAIN.to_string()))?;
-            }
-            Command::Ehlo(domain) => {
-                stream.send_reply(Reply::Ok().with_message(format!(
-                    "{} greets {}\nAUTH PLAIN{}",
-                    DOMAIN,
-                    domain,
-                    if tls_acceptor.is_some() {
-                        "\nSTARTTLS"
-                    } else {
-                        ""
-                    }
-                )))?;
-            }
-            Command::Recipient(address) => {
-                if address.domain == DOMAIN {
-                    to.push(address);
-
-                    stream.send_reply(Reply::Ok())?;
-                } else if let Some(from) = &from {
-                    if from.domain == DOMAIN {
-                        to.push(address);
-
-                        stream.send_reply(Reply::Ok())?;
-                    } else {
-                        stream.send_reply(Reply::UnableToAccomodateParameters().with_message(format!(
-                            "The address {} is not hosted on this domain ({})",
-                            address, DOMAIN
-                        )))?;
-                    }
-                }
-            }
-            Command::Mail(adress) => {
-                from = Some(adress);
-                to = Vec::new();
-                body = None;
-
-                stream.send_reply(Reply::Ok())?;
-            }
-            Command::Reset => {
-                from = None;
-                to = Vec::new();
-                body = None;
-
-                stream.send_reply(Reply::Ok())?;
-            }
-            Command::Data => {
-                stream.send_reply(Reply::ServiceReady())?;
-
-                let mut mail: Vec<u8> = Vec::new();
-                let mut buffer = [0; 512];
-                while !mail.ends_with(&[b'\r', b'\n', b'.', b'\r', b'\n']) {
-                    let read = stream.read(&mut buffer)?;
-                    mail.append(&mut buffer[..read].to_vec());
-                }
-                if let Ok(mut file) = std::fs::File::create("mail.txt") {
-                    file.write_all(&mail)?;
-                }
-                let mail = String::from_utf8(mail).unwrap();
-                info!("Received mail: {}", mail);
-
-                body = Some(mail);
-
-                stream.send_reply(Reply::Ok())?;
-
-                if let (to, Some(from)) = (to.remove(0), from.take()) {
-                    mta::transfert_mail(to, from, body.unwrap())?;
-                }
-            }
-            #[allow(unused_must_use)]
-            Command::Quit => {
-                stream.send_reply(Reply::Ok());
-                stream.shutdown();
-                return Ok(());
-            }
-            Command::StartTls => {
-                if let Some(tls_acceptor) = &tls_acceptor {
-                    stream.send_reply(Reply::ServiceReady())?;
-                    if let Stream::Unencryted(unencrypted_stream) = stream {
-                        if let Ok(encrypted_stream) = tls_acceptor.accept(unencrypted_stream) {
-                            stream = Stream::Encrypted(encrypted_stream);
-                            info!("TLS enabled");
-                        } else {
-                            warn!("Failed to enable TLS");
-                            return Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe));
-                        }
-                    }
-                } else {
-                    stream
-                        .send_reply(Reply::ActionNotTaken().with_message(String::from("TLS can't be activated")))?;
-                }
-            }
-            Command::Auth(data) => {
-                debug!("{:?}", data.as_bytes());
-                let _written = stream.write(b"235 Authentication successful\r\n")?;
-            }
-            Command::Noop => {
-                stream.send_reply(Reply::Ok())?;
-            }
-            _ => {
-                stream.send_reply(Reply::CommandNotImplemented())?;
-            }
-        }
-    }
-}
+pub mod mda;
 
 use clap::clap_app;
 
@@ -163,6 +26,7 @@ fn main() -> std::io::Result<()> {
         (@arg TLS:      --tls requires("PASSWORD") requires("CERT") "Enable TLS.")
         (@arg CERT:     -c --cert +takes_value "The certificate pfx file.")
         (@arg PASSWORD: --password +takes_value "The password of the certificate.")
+        (@arg DOMAIN:   -d --domain +takes_value +required "The hosting domain. Set to your ip in square brackets if you don't own a domain (ex: [127.0.0.1]).")
     )
     .get_matches();
 
@@ -186,6 +50,7 @@ fn main() -> std::io::Result<()> {
     } else {
         None
     };
+    let domain = matches.value_of("DOMAIN").unwrap();
 
     info!(
         "Launching SMTP server on port {}. TLS is {}.",
@@ -218,7 +83,7 @@ fn main() -> std::io::Result<()> {
 
         debug!(
             "Connection closed. Result: {:?}",
-            handle_client(stream, tls_acceptor.clone())
+            mda::handle_client(stream, tls_acceptor.clone(), domain)
         );
     }
     Ok(())

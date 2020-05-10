@@ -8,7 +8,7 @@ use trust_dns_resolver::config::*;
 use crate::{address::EmailAddress, tcp_stream::Stream, commands::Command, replies::{ReplyType, Reply}};
 use std::{net::TcpStream, thread::sleep, time::Duration};
 
-pub fn transfert_mail(to: EmailAddress, from: EmailAddress, mail: String) -> std::io::Result<()> {
+pub fn transfert_mail(to: EmailAddress, from: EmailAddress, mail: String, domain: &str) -> std::io::Result<()> {
     let resolver = Resolver::new(ResolverConfig::default(), ResolverOpts::default()).unwrap();
     let response = resolver.mx_lookup(&to.domain).unwrap();
 
@@ -23,7 +23,7 @@ pub fn transfert_mail(to: EmailAddress, from: EmailAddress, mail: String) -> std
     // Get the init message and send Ehlo
     if let Ok(Ok(Reply{reply_type: ReplyType::ServiceReady, message})) = stream.read_reply() {
         mda_address = string_tools::get_all_before(&message, " ").to_string();
-        stream.send_command(Command::Ehlo("mubelotix.dev".to_string()))?;
+        stream.send_command(Command::Ehlo(domain.to_string()))?;
     } else {
         warn!("Service is not ready");
         return Err(std::io::Error::from(std::io::ErrorKind::Other));
@@ -41,7 +41,7 @@ pub fn transfert_mail(to: EmailAddress, from: EmailAddress, mail: String) -> std
                         Ok(new_stream) => {
                             debug!("Tls enabled");
                             stream = Stream::Encrypted(new_stream);
-                            stream.send_command(Command::Ehlo("mubelotix.dev".to_string()))?;
+                            stream.send_command(Command::Ehlo(domain.to_string()))?;
 
                             if let Ok(Ok(Reply{reply_type: ReplyType::Ok, message})) = stream.read_reply() {
                                 println!("{:?}", message);
