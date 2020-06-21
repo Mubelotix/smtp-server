@@ -1,6 +1,6 @@
 use string_tools::{get_all_after, get_all_before};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct EmailAddress {
     pub username: String,
     pub domain: String,

@@ -1,12 +1,12 @@
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use std::net::{*, ToSocketAddrs};
 use native_tls::TlsConnector;
 use trust_dns_resolver::Resolver;
 use std::io::{prelude::*};
 use trust_dns_resolver::config::*;
 use crate::{address::EmailAddress, tcp_stream::Stream, commands::Command, replies::{ReplyType, Reply}};
-use std::{net::TcpStream, thread::sleep, time::Duration};
+use std::{net::TcpStream};
+use email::MimeMessage;
 
 pub enum MTAError {
     IOError(std::io::Error),
@@ -42,7 +42,7 @@ impl From<native_tls::HandshakeError<std::net::TcpStream>> for MTAError {
     }
 }
 
-pub fn transfert_mail(to: EmailAddress, from: EmailAddress, mail: String, domain: &str) -> Result<(), MTAError> {
+pub fn transfert_mail(to: &EmailAddress, from: &EmailAddress, mail: MimeMessage, domain: &str) -> Result<(), MTAError> {
     let resolver = Resolver::new(ResolverConfig::default(), ResolverOpts::default())?;
     let response = resolver.mx_lookup(&to.domain)?;
 
@@ -109,7 +109,7 @@ pub fn transfert_mail(to: EmailAddress, from: EmailAddress, mail: String, domain
         return Err(MTAError::ServiceNotReady);
     }
 
-    stream.send_command(Command::Mail(from))?;
+    stream.send_command(Command::Mail(from.clone()))?;
 
     if let Ok(Ok(Reply{reply_type: ReplyType::Ok, message: _})) = stream.read_reply() {
         
@@ -118,11 +118,12 @@ pub fn transfert_mail(to: EmailAddress, from: EmailAddress, mail: String, domain
         return Err(MTAError::ServiceNotReady);
     }
 
-    stream.send_command(Command::Recipient(to))?;
+    stream.send_command(Command::Recipient(to.clone()))?;
     stream.read_reply()?;
     stream.send_command(Command::Data)?;
     stream.read_reply()?;
     
+    let mail = mail.as_string();
     let mail = mail.as_bytes();
     let mut requests = 0;
     let mut written = stream.write(mail)?;
@@ -135,20 +136,4 @@ pub fn transfert_mail(to: EmailAddress, from: EmailAddress, mail: String, domain
     stream.send_command(Command::Quit)?;
     
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::address::EmailAddress;
-
-    #[test]
-    fn transfert_to_google() {
-        env_logger::try_init();
-
-        /*transfert_mail(EmailAddress {
-            username: String::from("mubelotix"),
-            domain: String::from("gmail.com"),
-        }).unwrap();*/
-    }
 }

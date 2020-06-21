@@ -1,6 +1,7 @@
 use crate::{address::EmailAddress, mta::transfert_mail, tcp_stream::Stream, replies::Reply, commands::Command};
 use std::{net::TcpStream, sync::Arc, io::prelude::*};
 use native_tls::{TlsAcceptor};
+use email::MimeMessage;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 
@@ -12,7 +13,7 @@ pub fn handle_client(stream: TcpStream, tls_acceptor: Option<Arc<TlsAcceptor>>, 
 
     let mut from: Option<EmailAddress> = None;
     let mut to = Vec::new();
-    let mut body: Option<String> = None;
+    let mut body: Option<MimeMessage> = None;
 
     loop {
         let command = match stream.read_command()? {
@@ -48,13 +49,12 @@ pub fn handle_client(stream: TcpStream, tls_acceptor: Option<Arc<TlsAcceptor>>, 
 
                     stream.send_reply(Reply::Ok())?;
                 } else if let Some(from) = &from {
-                    if from.domain == domain {
+                    if /*from.domain == domain ||*/ true {
                         to.push(address);
 
                         stream.send_reply(Reply::Ok())?;
                     } else {
                         stream.send_reply(Reply::UnableToAccomodateParameters().with_message(format!(
-                            //TODO transfert mail when sending from @domain to @otherdomain
                             "The address {} is not hosted on this domain ({})",
                             address, domain
                         )))?;
@@ -88,14 +88,17 @@ pub fn handle_client(stream: TcpStream, tls_acceptor: Option<Arc<TlsAcceptor>>, 
                     file.write_all(&mail)?;
                 }
                 let mail = String::from_utf8(mail).unwrap();
-                info!("Received mail: {}", mail);
+                let mail = MimeMessage::parse(&mail).unwrap();
+                info!("Received mail: {:#?}", mail);
 
                 body = Some(mail);
 
                 stream.send_reply(Reply::Ok())?;
 
-                if let (to, Some(from)) = (to.remove(0), from.take()) {
-                    transfert_mail(to, from, body.unwrap(), domain);
+                if let (Some(to), Some(from)) = (to.get(0), &from) {
+                    if to.domain != domain && from.domain == domain {
+                        transfert_mail(to, from, body.unwrap(), domain);
+                    }
                 }
             }
             #[allow(unused_must_use)]
