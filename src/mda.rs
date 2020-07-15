@@ -76,7 +76,7 @@ pub fn handle_client(stream: TcpStream, tls_acceptor: Option<Arc<TlsAcceptor>>, 
                 stream.send_reply(Reply::Ok())?;
             }
             Command::Data => {
-                stream.send_reply(Reply::ServiceReady())?;
+                stream.send_reply(Reply::StartMailInput().with_message(String::from("")))?;
 
                 let mut mail: Vec<u8> = Vec::new();
                 let mut buffer = [0; 512];
@@ -84,6 +84,9 @@ pub fn handle_client(stream: TcpStream, tls_acceptor: Option<Arc<TlsAcceptor>>, 
                     let read = stream.read(&mut buffer)?;
                     mail.append(&mut buffer[..read].to_vec());
                 }
+                mail.remove(mail.len() - 1);
+                mail.remove(mail.len() - 1);
+                mail.remove(mail.len() - 1);
                 if let Ok(mut file) = std::fs::File::create("mail.txt") {
                     file.write_all(&mail)?;
                 }

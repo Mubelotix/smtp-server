@@ -113,9 +113,7 @@ impl std::str::FromStr for Command {
                 command = &command[10..];
                 command = command.trim();
 
-                if command.starts_with('<') && command.ends_with('>') {
-                    command = &command[1..command.len() - 1];
-                }
+                command = string_tools::get_all_between(command, "<", ">");
 
                 let address = match command.parse::<EmailAddress>() {
                     Ok(address) => address,
