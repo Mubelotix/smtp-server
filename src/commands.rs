@@ -229,28 +229,33 @@ mod parsing {
             let number_idx2 = digit_idx.get();
             if c.is_ascii_digit() {
                 if number_idx2 < 2 || (number_idx2 == 2 && allow_three_digits.get()) {
-                    if number_idx2 == 0 {
-                        allow_high_third_digit.set(true);
-                        if c == '2' {
+                    match number_idx2 {
+                        0 => {
+                            allow_high_third_digit.set(true);
                             allow_three_digits.set(true);
-                            allow_high_second_digit.set(false);
-                        } else if c != '0' && c != '1' {
-                            allow_three_digits.set(false);
-                        } else  {
-                            allow_three_digits.set(true);
+                            allow_high_second_digit.set(true);
+
+                            match c {
+                                '2' => allow_high_second_digit.set(false),
+                                '0' | '1' => (),
+                                _ => allow_three_digits.set(false),
+                            }
+                        },
+                        1 if !allow_high_second_digit.get() => {
+                            match c {
+                                '6' | '7' | '8' | '9' => allow_three_digits.set(false),
+                                '5' => allow_high_third_digit.set(false),
+                                _ => (),
+                            }
+                        },
+                        2 if !allow_high_third_digit.get() => {
+                            if c == '6' || c == '7' || c == '8' || c == '9' {
+                                error.set(true);
+                                return false;
+                            }
                         }
-                    } else if number_idx2 == 1 && !allow_high_second_digit.get() {
-                        if c == '6' || c == '7' || c == '8' || c == '9' {
-                            allow_three_digits.set(false);
-                        } else if c == '5' {
-                            allow_high_third_digit.set(false);
-                        }
-                    } else if number_idx2 == 2 && !allow_high_third_digit.get() {
-                        if c == '6' || c == '7' || c == '8' || c == '9' {
-                            error.set(true);
-                            return false;
-                        }
-                    }
+                        _ => (),
+                    };
                     digit_idx.set(number_idx2 + 1);
                     true
                 } else {
