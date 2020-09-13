@@ -19,6 +19,13 @@ type PATH<'a> = (Vec<&'a str>, (LocalPart<'a>, ServerIdentity<'a>));
 type PARAM<'a> = (&'a str, Option<&'a str>);
 
 #[derive(Debug, PartialEq)]
+pub enum Recipient<'a> {
+    LocalPostmaster,
+    Postmaster(&'a str),
+    Path(PATH<'a>),
+}
+
+#[derive(Debug, PartialEq)]
 pub enum Command<'a> {
     Helo(String),
     Helo2(&'a str),
@@ -42,6 +49,7 @@ pub enum Command2<'a> {
     Helo(&'a str),
     Ehlo(ServerIdentity<'a>),
     From(Option<PATH<'a>>, Vec<PARAM<'a>>),
+    To(Recipient<'a>, Vec<PARAM<'a>>),
 }
 
 impl<'a> ToString for Command<'a> {
@@ -565,6 +573,47 @@ mod parsing {
         .map_err(|_| Error::Known("Empty esmtp_value"))?)
     }
 
+    fn recipient(input: &str) -> Result<(&str, Recipient), Error> {
+        if let Ok((input, _)) = tag_no_case::<_, _, ()>("<postmaster@")(input) {
+            if let Ok((input, domain)) = domain(input) {
+                if let Ok((input, _)) = tag::<_, _, ()>(">")(input) {
+                    return Ok((input, Recipient::Postmaster(domain)));
+                }
+            }
+        }
+
+        if let Ok((input, path)) = path(input) {
+            return Ok((input, Recipient::Path(path)));
+        }
+
+        if let Ok((input, _)) = tag_no_case::<_, _, ()>("<postmaster>")(input) {
+            return Ok((input, Recipient::LocalPostmaster));
+        }
+
+        Err(Error::Known("The recipient does not match anything."))
+    }
+
+    fn to(input: &str) -> Result<Command, Error> {
+        let (input, _command_name) =
+            tag_no_case::<_, _, ()>("RCPT TO:")(input).map_err(|_| Error::CommandName)?;
+        let (mut input, recipient) = recipient(input)?;
+
+        let mail_parameters;
+        if let Ok((i, _)) = tag::<_, _, ()>(" ")(input) {
+            let (i, p) = parameters(i)?;
+            input = i;
+            mail_parameters = p;
+        } else {
+            mail_parameters = Vec::new();
+        }
+
+        let (input, _end) = tag::<_, _, ()>("\r\n")(input).map_err(|_| Error::ExpectedCrlf)?;
+        if !input.is_empty() {
+            return Err(Error::ExpectedEndOfInput);
+        }
+        Ok(Command::To(recipient, mail_parameters))
+    }
+
     fn from(input: &str) -> Result<Command, Error> {
         let (input, _command_name) =
             tag_no_case::<_, _, ()>("MAIL FROM:")(input).map_err(|_| Error::CommandName)?;
@@ -603,22 +652,99 @@ mod parsing {
         fn test_from() {
             assert_eq!(
                 from("MAIL FROM:<mubelotix@gmail.com>\r\n").unwrap(),
-                Command::From(Some((vec![], (LocalPart::DotString("mubelotix"), ServerIdentity::Domain("gmail.com")))), vec![])
+                Command::From(
+                    Some((
+                        vec![],
+                        (
+                            LocalPart::DotString("mubelotix"),
+                            ServerIdentity::Domain("gmail.com")
+                        )
+                    )),
+                    vec![]
+                )
             );
 
             assert_eq!(
                 from("MAIL FROM:<@example.com:mubelotix@gmail.com>\r\n").unwrap(),
-                Command::From(Some((vec!["example.com"], (LocalPart::DotString("mubelotix"), ServerIdentity::Domain("gmail.com")))), vec![])
+                Command::From(
+                    Some((
+                        vec!["example.com"],
+                        (
+                            LocalPart::DotString("mubelotix"),
+                            ServerIdentity::Domain("gmail.com")
+                        )
+                    )),
+                    vec![]
+                )
             );
 
             assert_eq!(
                 from("MAIL FROM:<mubelotix@gmail.com> AUTH=<>\r\n").unwrap(),
-                Command::From(Some((vec![], (LocalPart::DotString("mubelotix"), ServerIdentity::Domain("gmail.com")))), vec![("AUTH", Some("<>"))])
+                Command::From(
+                    Some((
+                        vec![],
+                        (
+                            LocalPart::DotString("mubelotix"),
+                            ServerIdentity::Domain("gmail.com")
+                        )
+                    )),
+                    vec![("AUTH", Some("<>"))]
+                )
             );
 
             assert_eq!(
                 from("MAIL FROM:<mubelotix@gmail.com> AUTH=<> anonymous\r\n").unwrap(),
-                Command::From(Some((vec![], (LocalPart::DotString("mubelotix"), ServerIdentity::Domain("gmail.com")))), vec![("AUTH", Some("<>")), ("anonymous", None)])
+                Command::From(
+                    Some((
+                        vec![],
+                        (
+                            LocalPart::DotString("mubelotix"),
+                            ServerIdentity::Domain("gmail.com")
+                        )
+                    )),
+                    vec![("AUTH", Some("<>")), ("anonymous", None)]
+                )
+            );
+        }
+
+        #[test]
+        fn test_to() {
+            assert_eq!(
+                to("RCPT TO:<@jkl.org:userc@d.bar.org>\r\n").unwrap(),
+                Command::To(
+                    Recipient::Path((
+                        vec!["jkl.org"],
+                        (
+                            LocalPart::DotString("userc"),
+                            ServerIdentity::Domain("d.bar.org")
+                        )
+                    )),
+                    vec![]
+                )
+            );
+
+            assert_eq!(
+                to("RCPT TO:<poStmasTer@gmail.com>\r\n").unwrap(),
+                Command::To(
+                    Recipient::Postmaster("gmail.com"),
+                    vec![]
+                )
+            );
+
+            assert_eq!(
+                to("RCPT TO:<poStMasTer>\r\n").unwrap(),
+                Command::To(
+                    Recipient::LocalPostmaster,
+                    vec![]
+                )
+            );
+
+            assert_eq!(
+                to("RCPT TO:<postmaster> name=value flag\r\n").unwrap(),
+                Command::To(
+                    Recipient::LocalPostmaster,
+                    vec![("name", Some("value")), ("flag", None)]
+                )
             );
         }
 
