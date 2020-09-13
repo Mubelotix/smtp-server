@@ -61,6 +61,7 @@ pub enum Command2<'a> {
     Verify(SmtpString<'a>),
     Expand(SmtpString<'a>),
     Help(Option<SmtpString<'a>>),
+    Noop(Option<SmtpString<'a>>),
 }
 
 impl<'a> ToString for Command<'a> {
@@ -713,6 +714,23 @@ mod parsing {
         Ok(Command::Help(command))
     }
 
+    fn noop(input: &str) -> Result<Command, Error> {
+        let (mut input, _) = tag_no_case::<_,_,()>("NOOP")(input).map_err(|_| Error::CommandName)?;
+        let parameter = if let Ok((i, _)) = tag::<_,_,()>(" ")(input) {
+            let (i, parameter) = string(i)?;
+            input = i;
+            Some(parameter)
+        } else {
+            None
+        };
+        
+        let (input, _end) = tag::<_, _, ()>("\r\n")(input).map_err(|_| Error::ExpectedCrlf)?;
+        if !input.is_empty() {
+            return Err(Error::ExpectedEndOfInput);
+        }
+        Ok(Command::Noop(parameter))
+    }
+
     #[cfg(test)]
     mod test {
         use super::*;
@@ -740,7 +758,7 @@ mod parsing {
         }
 
         #[test]
-        fn test_help() {
+        fn test_help_and_noop() {
             assert_eq!(
                 help("HELP\r\n").unwrap(),
                 Command::Help(None)
@@ -752,6 +770,19 @@ mod parsing {
             assert_eq!(
                 help("HELP \"EXPN\\@\"\r\n").unwrap(),
                 Command::Help(Some(SmtpString::QuotedString("EXPN@".to_string())))
+            );
+
+            assert_eq!(
+                noop("NOOP\r\n").unwrap(),
+                Command::Noop(None)
+            );
+            assert_eq!(
+                noop("NOOP EXPN\r\n").unwrap(),
+                Command::Noop(Some(SmtpString::Atom("EXPN")))
+            );
+            assert_eq!(
+                noop("NOOP \"EXPN\\@\"\r\n").unwrap(),
+                Command::Noop(Some(SmtpString::QuotedString("EXPN@".to_string())))
             );
         }
 
