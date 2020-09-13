@@ -59,6 +59,7 @@ pub enum Command2<'a> {
     Data,
     Reset,
     Verify(SmtpString<'a>),
+    Expand(SmtpString<'a>),
 }
 
 impl<'a> ToString for Command<'a> {
@@ -684,6 +685,16 @@ mod parsing {
         Ok(Command::Verify(string))
     }
 
+    fn expand(input: &str) -> Result<Command, Error> {
+        let (input, _) = tag_no_case::<_,_,()>("EXPN ")(input).map_err(|_| Error::CommandName)?;
+        let (input, string) = string(input)?;
+        let (input, _end) = tag::<_, _, ()>("\r\n")(input).map_err(|_| Error::ExpectedCrlf)?;
+        if !input.is_empty() {
+            return Err(Error::ExpectedEndOfInput);
+        }
+        Ok(Command::Expand(string))
+    }
+
     #[cfg(test)]
     mod test {
         use super::*;
@@ -711,7 +722,7 @@ mod parsing {
         }
 
         #[test]
-        fn test_verify() {
+        fn test_verify_and_expand() {
             assert_eq!(
                 verify("VRFY mubelotix\r\n").unwrap(),
                 Command::Verify(SmtpString::Atom("mubelotix"))
@@ -721,6 +732,16 @@ mod parsing {
                 Command::Verify(SmtpString::QuotedString("mubelotix@gmail.com".to_string()))
             );
             assert!(verify("VRFY \"mubelotix\\@gmail\\.com\r\n").is_err());
+
+            assert_eq!(
+                expand("EXPN rustaceans\r\n").unwrap(),
+                Command::Expand(SmtpString::Atom("rustaceans"))
+            );
+            assert_eq!(
+                expand("EXPN \"Rust\\ lovers\"\r\n").unwrap(),
+                Command::Expand(SmtpString::QuotedString("Rust lovers".to_string()))
+            );
+            assert!(expand("EXPN \"unterminated name\r\n").is_err());
         }
 
         #[test]
