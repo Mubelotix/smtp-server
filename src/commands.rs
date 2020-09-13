@@ -50,6 +50,8 @@ pub enum Command2<'a> {
     Ehlo(ServerIdentity<'a>),
     From(Option<PATH<'a>>, Vec<PARAM<'a>>),
     To(Recipient<'a>, Vec<PARAM<'a>>),
+    Data,
+    Reset,
 }
 
 impl<'a> ToString for Command<'a> {
@@ -635,6 +637,24 @@ mod parsing {
         Ok(Command::From(path, mail_parameters))
     }
 
+    fn data(input: &str) -> Result<Command, Error> {
+        let (input, _) = tag_no_case::<_,_,()>("DATA\r\n")(input).map_err(|_| Error::CommandName)?;
+        if !input.is_empty() {
+            return Err(Error::ExpectedEndOfInput);
+        }
+
+        Ok(Command::Data)
+    }
+
+    fn reset(input: &str) -> Result<Command, Error> {
+        let (input, _) = tag_no_case::<_,_,()>("RSET\r\n")(input).map_err(|_| Error::CommandName)?;
+        if !input.is_empty() {
+            return Err(Error::ExpectedEndOfInput);
+        }
+
+        Ok(Command::Reset)
+    }
+
     #[cfg(test)]
     mod test {
         use super::*;
@@ -646,6 +666,19 @@ mod parsing {
                 Command::Helo("google.com")
             );
             assert!(helo("HELO google.com\r\n invalid ").is_err());
+        }
+
+        #[test]
+        fn test_data_and_reset() {
+            assert_eq!(
+                data("DATA\r\n").unwrap(),
+                Command::Data
+            );
+            assert_eq!(
+                reset("RSET\r\n").unwrap(),
+                Command::Reset
+            );
+            assert!(data("DATA\r\n email data").is_err());
         }
 
         #[test]
