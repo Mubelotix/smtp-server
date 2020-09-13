@@ -15,7 +15,7 @@ pub enum LocalPart<'a> {
     QuotedString(String),
 }
 
-type PATH<'a> = (Option<Vec<&'a str>>, (LocalPart<'a>, ServerIdentity<'a>));
+type PATH<'a> = (Vec<&'a str>, (LocalPart<'a>, ServerIdentity<'a>));
 type PARAM<'a> = (&'a str, Option<&'a str>);
 
 #[derive(Debug, PartialEq)]
@@ -41,7 +41,7 @@ pub enum Command<'a> {
 pub enum Command2<'a> {
     Helo(&'a str),
     Ehlo(ServerIdentity<'a>),
-    From(Option<PATH<'a>>),
+    From(Option<PATH<'a>>, Vec<PARAM<'a>>),
 }
 
 impl<'a> ToString for Command<'a> {
@@ -475,9 +475,9 @@ mod parsing {
         let source_route = match source_route(input) {
             Ok((i, sr)) => {
                 input = i;
-                Some(sr)
+                sr
             }
-            _ => None,
+            _ => Vec::new(),
         };
         let (input, mailbox) = mailbox(input)?;
         let (input, _end) = tag::<_, _, ()>(">")(input)
@@ -515,7 +515,7 @@ mod parsing {
 
         while !input.is_empty() {
             let current_input;
-            if let Ok((i, _)) = tag::<_,_,()>(" ")(input) {
+            if let Ok((i, _)) = tag::<_, _, ()>(" ")(input) {
                 current_input = i;
             } else {
                 break;
@@ -534,9 +534,9 @@ mod parsing {
 
     fn esmtp_param(input: &str) -> Result<(&str, PARAM), Error> {
         let (mut input, keyword) = esmtp_keyword(input)?;
-        match tag::<_,_,()>("=")(input) {
+        match tag::<_, _, ()>("=")(input) {
             Ok((i, _)) => input = i,
-            _ => return Ok((input, (keyword, None)))
+            _ => return Ok((input, (keyword, None))),
         }
         let (input, value) = esmtp_value(input)?;
         Ok((input, (keyword, Some(value))))
@@ -568,12 +568,22 @@ mod parsing {
     fn from(input: &str) -> Result<Command, Error> {
         let (input, _command_name) =
             tag_no_case::<_, _, ()>("MAIL FROM:")(input).map_err(|_| Error::CommandName)?;
-        let (input, path) = reverse_path(input)?;
+        let (mut input, path) = reverse_path(input)?;
+
+        let mail_parameters;
+        if let Ok((i, _)) = tag::<_, _, ()>(" ")(input) {
+            let (i, p) = parameters(i)?;
+            input = i;
+            mail_parameters = p;
+        } else {
+            mail_parameters = Vec::new();
+        }
+
         let (input, _end) = tag::<_, _, ()>("\r\n")(input).map_err(|_| Error::ExpectedCrlf)?;
         if !input.is_empty() {
             return Err(Error::ExpectedEndOfInput);
         }
-        Ok(Command::From(path))
+        Ok(Command::From(path, mail_parameters))
     }
 
     #[cfg(test)]
@@ -590,6 +600,29 @@ mod parsing {
         }
 
         #[test]
+        fn test_from() {
+            assert_eq!(
+                from("MAIL FROM:<mubelotix@gmail.com>\r\n").unwrap(),
+                Command::From(Some((vec![], (LocalPart::DotString("mubelotix"), ServerIdentity::Domain("gmail.com")))), vec![])
+            );
+
+            assert_eq!(
+                from("MAIL FROM:<@example.com:mubelotix@gmail.com>\r\n").unwrap(),
+                Command::From(Some((vec!["example.com"], (LocalPart::DotString("mubelotix"), ServerIdentity::Domain("gmail.com")))), vec![])
+            );
+
+            assert_eq!(
+                from("MAIL FROM:<mubelotix@gmail.com> AUTH=<>\r\n").unwrap(),
+                Command::From(Some((vec![], (LocalPart::DotString("mubelotix"), ServerIdentity::Domain("gmail.com")))), vec![("AUTH", Some("<>"))])
+            );
+
+            assert_eq!(
+                from("MAIL FROM:<mubelotix@gmail.com> AUTH=<> anonymous\r\n").unwrap(),
+                Command::From(Some((vec![], (LocalPart::DotString("mubelotix"), ServerIdentity::Domain("gmail.com")))), vec![("AUTH", Some("<>")), ("anonymous", None)])
+            );
+        }
+
+        #[test]
         fn test_parameters() {
             assert_eq!(
                 parameters("AUTH=test").unwrap().1,
@@ -597,13 +630,20 @@ mod parsing {
             );
 
             assert_eq!(
-                parameters("AUTH=test PARAM-3=value > lorem ipsum dolor sit amet").unwrap().1,
+                parameters("AUTH=test PARAM-3=value > lorem ipsum dolor sit amet")
+                    .unwrap()
+                    .1,
                 vec![("AUTH", Some("test")), ("PARAM-3", Some("value"))]
             );
 
             assert_eq!(
                 parameters("AUTH=test PARAM-3=value lorem ipsum").unwrap().1,
-                vec![("AUTH", Some("test")), ("PARAM-3", Some("value")), ("lorem", None), ("ipsum", None)]
+                vec![
+                    ("AUTH", Some("test")),
+                    ("PARAM-3", Some("value")),
+                    ("lorem", None),
+                    ("ipsum", None)
+                ]
             );
 
             assert!(parameters("-invalidname=data").is_err());
@@ -629,7 +669,7 @@ mod parsing {
             assert_eq!(
                 reverse_path("<mubelotix@mubelotix.dev>").unwrap().1,
                 Some((
-                    None,
+                    vec![],
                     (
                         LocalPart::DotString("mubelotix"),
                         ServerIdentity::Domain("mubelotix.dev")
@@ -641,7 +681,7 @@ mod parsing {
                     .unwrap()
                     .1,
                 Some((
-                    Some(vec!["example.com", "gmail.com"]),
+                    vec!["example.com", "gmail.com"],
                     (
                         LocalPart::DotString("mubelotix"),
                         ServerIdentity::Domain("mubelotix.dev")
