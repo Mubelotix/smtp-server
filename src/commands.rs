@@ -508,28 +508,6 @@ mod parsing {
         Ok((input, (source_route, mailbox)))
     }
 
-    fn helo(input: &str) -> Result<Command, Error> {
-        let (input, _command_name) =
-            tag_no_case::<_, _, ()>("HELO ")(input).map_err(|_| Error::CommandName)?;
-        let (input, domain) = domain(input)?;
-        let (input, _end) = tag::<_, _, ()>("\r\n")(input).map_err(|_| Error::ExpectedCrlf)?;
-        if !input.is_empty() {
-            return Err(Error::ExpectedEndOfInput);
-        }
-        Ok(Command::Helo(domain))
-    }
-
-    fn ehlo(input: &str) -> Result<Command, Error> {
-        let (input, _command_name) =
-            tag_no_case::<_, _, ()>("EHLO ")(input).map_err(|_| Error::CommandName)?;
-        let (input, identity) = identity(input)?;
-        let (input, _end) = tag::<_, _, ()>("\r\n")(input).map_err(|_| Error::ExpectedCrlf)?;
-        if !input.is_empty() {
-            return Err(Error::ExpectedEndOfInput);
-        }
-        Ok(Command::Ehlo(identity))
-    }
-
     fn parameters(input: &str) -> Result<(&str, Vec<PARAM>), Error> {
         let mut parameters = Vec::new();
         let (mut input, first_param) = esmtp_param(input)?;
@@ -588,12 +566,12 @@ mod parsing {
     }
 
     fn string(input: &str) -> Result<(&str, SmtpString), Error> {
-        if let Ok((input, s)) = take_while1::<_,_,()>(is_atext)(input) {
-            return Ok((input, SmtpString::Atom(s)))
+        if let Ok((input, s)) = take_while1::<_, _, ()>(is_atext)(input) {
+            return Ok((input, SmtpString::Atom(s)));
         }
 
         if let Ok((input, s)) = quoted_string(input) {
-            return Ok((input, SmtpString::QuotedString(s)))
+            return Ok((input, SmtpString::QuotedString(s)));
         }
 
         Err(Error::Known("Expected a string."))
@@ -617,6 +595,30 @@ mod parsing {
         }
 
         Err(Error::Known("The recipient does not match anything."))
+    }
+
+    // commands
+
+    fn helo(input: &str) -> Result<Command, Error> {
+        let (input, _command_name) =
+            tag_no_case::<_, _, ()>("HELO ")(input).map_err(|_| Error::CommandName)?;
+        let (input, domain) = domain(input)?;
+        let (input, _end) = tag::<_, _, ()>("\r\n")(input).map_err(|_| Error::ExpectedCrlf)?;
+        if !input.is_empty() {
+            return Err(Error::ExpectedEndOfInput);
+        }
+        Ok(Command::Helo(domain))
+    }
+
+    fn ehlo(input: &str) -> Result<Command, Error> {
+        let (input, _command_name) =
+            tag_no_case::<_, _, ()>("EHLO ")(input).map_err(|_| Error::CommandName)?;
+        let (input, identity) = identity(input)?;
+        let (input, _end) = tag::<_, _, ()>("\r\n")(input).map_err(|_| Error::ExpectedCrlf)?;
+        if !input.is_empty() {
+            return Err(Error::ExpectedEndOfInput);
+        }
+        Ok(Command::Ehlo(identity))
     }
 
     fn to(input: &str) -> Result<Command, Error> {
@@ -662,7 +664,8 @@ mod parsing {
     }
 
     fn data(input: &str) -> Result<Command, Error> {
-        let (input, _) = tag_no_case::<_,_,()>("DATA\r\n")(input).map_err(|_| Error::CommandName)?;
+        let (input, _) =
+            tag_no_case::<_, _, ()>("DATA\r\n")(input).map_err(|_| Error::CommandName)?;
         if !input.is_empty() {
             return Err(Error::ExpectedEndOfInput);
         }
@@ -671,7 +674,8 @@ mod parsing {
     }
 
     fn start_tls(input: &str) -> Result<Command, Error> {
-        let (input, _) = tag_no_case::<_,_,()>("STARTTLS\r\n")(input).map_err(|_| Error::CommandName)?;
+        let (input, _) =
+            tag_no_case::<_, _, ()>("STARTTLS\r\n")(input).map_err(|_| Error::CommandName)?;
         if !input.is_empty() {
             return Err(Error::ExpectedEndOfInput);
         }
@@ -680,7 +684,8 @@ mod parsing {
     }
 
     fn quit(input: &str) -> Result<Command, Error> {
-        let (input, _) = tag_no_case::<_,_,()>("QUIT\r\n")(input).map_err(|_| Error::CommandName)?;
+        let (input, _) =
+            tag_no_case::<_, _, ()>("QUIT\r\n")(input).map_err(|_| Error::CommandName)?;
         if !input.is_empty() {
             return Err(Error::ExpectedEndOfInput);
         }
@@ -689,7 +694,8 @@ mod parsing {
     }
 
     fn reset(input: &str) -> Result<Command, Error> {
-        let (input, _) = tag_no_case::<_,_,()>("RSET\r\n")(input).map_err(|_| Error::CommandName)?;
+        let (input, _) =
+            tag_no_case::<_, _, ()>("RSET\r\n")(input).map_err(|_| Error::CommandName)?;
         if !input.is_empty() {
             return Err(Error::ExpectedEndOfInput);
         }
@@ -698,7 +704,7 @@ mod parsing {
     }
 
     fn verify(input: &str) -> Result<Command, Error> {
-        let (input, _) = tag_no_case::<_,_,()>("VRFY ")(input).map_err(|_| Error::CommandName)?;
+        let (input, _) = tag_no_case::<_, _, ()>("VRFY ")(input).map_err(|_| Error::CommandName)?;
         let (input, string) = string(input)?;
         let (input, _end) = tag::<_, _, ()>("\r\n")(input).map_err(|_| Error::ExpectedCrlf)?;
         if !input.is_empty() {
@@ -708,7 +714,7 @@ mod parsing {
     }
 
     fn expand(input: &str) -> Result<Command, Error> {
-        let (input, _) = tag_no_case::<_,_,()>("EXPN ")(input).map_err(|_| Error::CommandName)?;
+        let (input, _) = tag_no_case::<_, _, ()>("EXPN ")(input).map_err(|_| Error::CommandName)?;
         let (input, mailing_list) = string(input)?;
         let (input, _end) = tag::<_, _, ()>("\r\n")(input).map_err(|_| Error::ExpectedCrlf)?;
         if !input.is_empty() {
@@ -718,15 +724,16 @@ mod parsing {
     }
 
     fn help(input: &str) -> Result<Command, Error> {
-        let (mut input, _) = tag_no_case::<_,_,()>("HELP")(input).map_err(|_| Error::CommandName)?;
-        let command = if let Ok((i, _)) = tag::<_,_,()>(" ")(input) {
+        let (mut input, _) =
+            tag_no_case::<_, _, ()>("HELP")(input).map_err(|_| Error::CommandName)?;
+        let command = if let Ok((i, _)) = tag::<_, _, ()>(" ")(input) {
             let (i, command) = string(i)?;
             input = i;
             Some(command)
         } else {
             None
         };
-        
+
         let (input, _end) = tag::<_, _, ()>("\r\n")(input).map_err(|_| Error::ExpectedCrlf)?;
         if !input.is_empty() {
             return Err(Error::ExpectedEndOfInput);
@@ -735,20 +742,51 @@ mod parsing {
     }
 
     fn noop(input: &str) -> Result<Command, Error> {
-        let (mut input, _) = tag_no_case::<_,_,()>("NOOP")(input).map_err(|_| Error::CommandName)?;
-        let parameter = if let Ok((i, _)) = tag::<_,_,()>(" ")(input) {
+        let (mut input, _) =
+            tag_no_case::<_, _, ()>("NOOP")(input).map_err(|_| Error::CommandName)?;
+        let parameter = if let Ok((i, _)) = tag::<_, _, ()>(" ")(input) {
             let (i, parameter) = string(i)?;
             input = i;
             Some(parameter)
         } else {
             None
         };
-        
+
         let (input, _end) = tag::<_, _, ()>("\r\n")(input).map_err(|_| Error::ExpectedCrlf)?;
         if !input.is_empty() {
             return Err(Error::ExpectedEndOfInput);
         }
         Ok(Command::Noop(parameter))
+    }
+
+    fn command(input: &str) -> Result<Command, Error> {
+        if let Ok(command) = ehlo(input) {
+            return Ok(command);
+        } else if let Ok(command) = start_tls(input) {
+            return Ok(command);
+        } else if let Ok(command) = to(input) {
+            return Ok(command);
+        } else if let Ok(command) = from(input) {
+            return Ok(command);
+        } else if let Ok(command) = data(input) {
+            return Ok(command);
+        } else if let Ok(command) = quit(input) {
+            return Ok(command);
+        } else if let Ok(command) = verify(input) {
+            return Ok(command);
+        } else if let Ok(command) = expand(input) {
+            return Ok(command);
+        } else if let Ok(command) = reset(input) {
+            return Ok(command);
+        } else if let Ok(command) = helo(input) {
+            return Ok(command);
+        } else if let Ok(command) = noop(input) {
+            return Ok(command);
+        } else if let Ok(command) = help(input) {
+            return Ok(command);
+        } else {
+            return Err(Error::Known("No command matching"));
+        }
     }
 
     #[cfg(test)]
@@ -765,32 +803,31 @@ mod parsing {
         }
 
         #[test]
+        fn test_commands() {
+            assert_eq!(
+                command("HELO google.com\r\n").unwrap(),
+                Command::Helo("google.com")
+            );
+            assert_eq!(
+                command("EHLO google.com\r\n").unwrap(),
+                Command::Ehlo(ServerIdentity::Domain("google.com"))
+            );
+            assert_eq!(command("QUIT\r\n").unwrap(), Command::Quit,);
+            // todo add more cases
+        }
+
+        #[test]
         fn test_data_reset_quit_starttls() {
-            assert_eq!(
-                data("DATA\r\n").unwrap(),
-                Command::Data
-            );
-            assert_eq!(
-                reset("RSET\r\n").unwrap(),
-                Command::Reset
-            );
-            assert_eq!(
-                quit("QUIT\r\n").unwrap(),
-                Command::Quit
-            );
-            assert_eq!(
-                start_tls("STARTTLS\r\n").unwrap(),
-                Command::StartTLS
-            );
+            assert_eq!(data("DATA\r\n").unwrap(), Command::Data);
+            assert_eq!(reset("RSET\r\n").unwrap(), Command::Reset);
+            assert_eq!(quit("QUIT\r\n").unwrap(), Command::Quit);
+            assert_eq!(start_tls("STARTTLS\r\n").unwrap(), Command::StartTLS);
             assert!(data("DATA\r\n email data").is_err());
         }
 
         #[test]
         fn test_help_and_noop() {
-            assert_eq!(
-                help("HELP\r\n").unwrap(),
-                Command::Help(None)
-            );
+            assert_eq!(help("HELP\r\n").unwrap(), Command::Help(None));
             assert_eq!(
                 help("HELP EXPN\r\n").unwrap(),
                 Command::Help(Some(SmtpString::Atom("EXPN")))
@@ -800,10 +837,7 @@ mod parsing {
                 Command::Help(Some(SmtpString::QuotedString("EXPN@".to_string())))
             );
 
-            assert_eq!(
-                noop("NOOP\r\n").unwrap(),
-                Command::Noop(None)
-            );
+            assert_eq!(noop("NOOP\r\n").unwrap(), Command::Noop(None));
             assert_eq!(
                 noop("NOOP EXPN\r\n").unwrap(),
                 Command::Noop(Some(SmtpString::Atom("EXPN")))
@@ -914,18 +948,12 @@ mod parsing {
 
             assert_eq!(
                 to("RCPT TO:<poStmasTer@gmail.com>\r\n").unwrap(),
-                Command::To(
-                    Recipient::Postmaster("gmail.com"),
-                    vec![]
-                )
+                Command::To(Recipient::Postmaster("gmail.com"), vec![])
             );
 
             assert_eq!(
                 to("RCPT TO:<poStMasTer>\r\n").unwrap(),
-                Command::To(
-                    Recipient::LocalPostmaster,
-                    vec![]
-                )
+                Command::To(Recipient::LocalPostmaster, vec![])
             );
 
             assert_eq!(
@@ -1071,8 +1099,14 @@ mod parsing {
                 "This, is a (valid) email address."
             );
 
-            assert_eq!(string("mubelotix").unwrap().1, SmtpString::Atom("mubelotix"));
-            assert_eq!(string(r#""John\ Snow""#).unwrap().1, SmtpString::QuotedString("John Snow".to_string()));
+            assert_eq!(
+                string("mubelotix").unwrap().1,
+                SmtpString::Atom("mubelotix")
+            );
+            assert_eq!(
+                string(r#""John\ Snow""#).unwrap().1,
+                SmtpString::QuotedString("John Snow".to_string())
+            );
             assert!(string(r#"école"#).is_err());
         }
 
