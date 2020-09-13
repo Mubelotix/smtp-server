@@ -15,6 +15,12 @@ pub enum LocalPart<'a> {
     QuotedString(String),
 }
 
+#[derive(Debug, PartialEq)]
+pub enum SmtpString<'a> {
+    Atom(&'a str),
+    QuotedString(String),
+}
+
 type PATH<'a> = (Vec<&'a str>, (LocalPart<'a>, ServerIdentity<'a>));
 type PARAM<'a> = (&'a str, Option<&'a str>);
 
@@ -52,6 +58,7 @@ pub enum Command2<'a> {
     To(Recipient<'a>, Vec<PARAM<'a>>),
     Data,
     Reset,
+    Verify(SmtpString<'a>),
 }
 
 impl<'a> ToString for Command<'a> {
@@ -575,6 +582,18 @@ mod parsing {
         .map_err(|_| Error::Known("Empty esmtp_value"))?)
     }
 
+    fn string(input: &str) -> Result<(&str, SmtpString), Error> {
+        if let Ok((input, s)) = take_while1::<_,_,()>(is_atext)(input) {
+            return Ok((input, SmtpString::Atom(s)))
+        }
+
+        if let Ok((input, s)) = quoted_string(input) {
+            return Ok((input, SmtpString::QuotedString(s)))
+        }
+
+        Err(Error::Known("Expected a string."))
+    }
+
     fn recipient(input: &str) -> Result<(&str, Recipient), Error> {
         if let Ok((input, _)) = tag_no_case::<_, _, ()>("<postmaster@")(input) {
             if let Ok((input, domain)) = domain(input) {
@@ -655,6 +674,16 @@ mod parsing {
         Ok(Command::Reset)
     }
 
+    fn verify(input: &str) -> Result<Command, Error> {
+        let (input, _) = tag_no_case::<_,_,()>("VRFY ")(input).map_err(|_| Error::CommandName)?;
+        let (input, string) = string(input)?;
+        let (input, _end) = tag::<_, _, ()>("\r\n")(input).map_err(|_| Error::ExpectedCrlf)?;
+        if !input.is_empty() {
+            return Err(Error::ExpectedEndOfInput);
+        }
+        Ok(Command::Verify(string))
+    }
+
     #[cfg(test)]
     mod test {
         use super::*;
@@ -679,6 +708,19 @@ mod parsing {
                 Command::Reset
             );
             assert!(data("DATA\r\n email data").is_err());
+        }
+
+        #[test]
+        fn test_verify() {
+            assert_eq!(
+                verify("VRFY mubelotix\r\n").unwrap(),
+                Command::Verify(SmtpString::Atom("mubelotix"))
+            );
+            assert_eq!(
+                verify("VRFY \"mubelotix\\@gmail\\.com\"\r\n").unwrap(),
+                Command::Verify(SmtpString::QuotedString("mubelotix@gmail.com".to_string()))
+            );
+            assert!(verify("VRFY \"mubelotix\\@gmail\\.com\r\n").is_err());
         }
 
         #[test]
@@ -914,6 +956,10 @@ mod parsing {
                     .1,
                 "This, is a (valid) email address."
             );
+
+            assert_eq!(string("mubelotix").unwrap().1, SmtpString::Atom("mubelotix"));
+            assert_eq!(string(r#""John\ Snow""#).unwrap().1, SmtpString::QuotedString("John Snow".to_string()));
+            assert!(string(r#"école"#).is_err());
         }
 
         #[test]
