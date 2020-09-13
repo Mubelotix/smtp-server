@@ -60,6 +60,7 @@ pub enum Command2<'a> {
     Reset,
     Verify(SmtpString<'a>),
     Expand(SmtpString<'a>),
+    Help(Option<SmtpString<'a>>),
 }
 
 impl<'a> ToString for Command<'a> {
@@ -687,12 +688,29 @@ mod parsing {
 
     fn expand(input: &str) -> Result<Command, Error> {
         let (input, _) = tag_no_case::<_,_,()>("EXPN ")(input).map_err(|_| Error::CommandName)?;
-        let (input, string) = string(input)?;
+        let (input, mailing_list) = string(input)?;
         let (input, _end) = tag::<_, _, ()>("\r\n")(input).map_err(|_| Error::ExpectedCrlf)?;
         if !input.is_empty() {
             return Err(Error::ExpectedEndOfInput);
         }
-        Ok(Command::Expand(string))
+        Ok(Command::Expand(mailing_list))
+    }
+
+    fn help(input: &str) -> Result<Command, Error> {
+        let (mut input, _) = tag_no_case::<_,_,()>("HELP")(input).map_err(|_| Error::CommandName)?;
+        let command = if let Ok((i, _)) = tag::<_,_,()>(" ")(input) {
+            let (i, command) = string(i)?;
+            input = i;
+            Some(command)
+        } else {
+            None
+        };
+        
+        let (input, _end) = tag::<_, _, ()>("\r\n")(input).map_err(|_| Error::ExpectedCrlf)?;
+        if !input.is_empty() {
+            return Err(Error::ExpectedEndOfInput);
+        }
+        Ok(Command::Help(command))
     }
 
     #[cfg(test)]
@@ -719,6 +737,22 @@ mod parsing {
                 Command::Reset
             );
             assert!(data("DATA\r\n email data").is_err());
+        }
+
+        #[test]
+        fn test_help() {
+            assert_eq!(
+                help("HELP\r\n").unwrap(),
+                Command::Help(None)
+            );
+            assert_eq!(
+                help("HELP EXPN\r\n").unwrap(),
+                Command::Help(Some(SmtpString::Atom("EXPN")))
+            );
+            assert_eq!(
+                help("HELP \"EXPN\\@\"\r\n").unwrap(),
+                Command::Help(Some(SmtpString::QuotedString("EXPN@".to_string())))
+            );
         }
 
         #[test]
