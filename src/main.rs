@@ -10,10 +10,10 @@ use std::sync::Arc;
 pub mod address;
 /// TODO support 8-bit https://tools.ietf.org/html/rfc1652
 pub mod commands;
+pub mod mda;
+pub mod mta;
 pub mod replies;
 pub mod tcp_stream;
-pub mod mta;
-pub mod mda;
 
 use clap::clap_app;
 

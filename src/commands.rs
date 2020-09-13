@@ -10,6 +10,15 @@ pub enum ServerIdentity<'a> {
 }
 
 #[derive(Debug, PartialEq)]
+pub enum LocalPart<'a> {
+    DotString(&'a str),
+    QuotedString(String),
+}
+
+type PATH<'a> = (Option<Vec<&'a str>>, (LocalPart<'a>, ServerIdentity<'a>));
+type PARAM<'a> = (&'a str, Option<&'a str>);
+
+#[derive(Debug, PartialEq)]
 pub enum Command<'a> {
     Helo(String),
     Helo2(&'a str),
@@ -32,7 +41,7 @@ pub enum Command<'a> {
 pub enum Command2<'a> {
     Helo(&'a str),
     Ehlo(ServerIdentity<'a>),
-    From(&'a str),
+    From(Option<PATH<'a>>),
 }
 
 impl<'a> ToString for Command<'a> {
@@ -51,7 +60,7 @@ impl<'a> ToString for Command<'a> {
             Command::Quit => "QUIT\r\n".to_string(),
             Command::StartTls => "STARTTLS\r\n".to_string(),
             Command::Auth(mechanism) => format!("AUTH {}\r\n", mechanism),
-            _ => todo!()
+            _ => todo!(),
         }
     }
 }
@@ -167,18 +176,18 @@ impl<'a> std::str::FromStr for Command<'a> {
 
 #[allow(dead_code)]
 mod parsing {
+    use super::Command2 as Command;
+    use super::*;
     use nom::{
-        IResult,
         branch::alt,
         bytes::complete::tag_no_case,
-        bytes::complete::{tag, take_while},
-        sequence::tuple,
+        bytes::complete::{tag, take_while, take_while1},
         error::{ErrorKind, ParseError},
+        sequence::tuple,
         Err::Error as NomError,
+        IResult,
     };
-    use super::*;
     use std::cell::Cell;
-    use super::Command2 as Command;
 
     #[derive(Debug)]
     pub enum Error<'a> {
@@ -190,44 +199,38 @@ mod parsing {
         ExpectedCrlf,
         CommandName,
         Unknown,
-        Known(&'a str)
-    }
-
-    #[derive(Debug, PartialEq)]
-    pub enum LocalPart<'a> {
-        DotString(&'a str),
-        QuotedString(String),
+        Known(&'a str),
     }
 
     fn is_atext(character: char) -> bool {
-        (character as u8 >= 0x41 && character as u8 <= 0x5A) ||
-        (character as u8 >= 0x61 && character as u8 <= 0x7A) ||
-        (character as u8 >= 0x30 && character as u8 <= 0x39) ||
-        character == '!' ||
-        character == '#' ||
-        character == '$' ||
-        character == '%' ||
-        character == '&' ||
-        character == '\'' ||
-        character == '*' ||
-        character == '+' ||
-        character == '-' ||
-        character == '/' ||
-        character == '=' ||
-        character == '?' ||
-        character == '^' ||
-        character == '_' ||
-        character == '`' ||
-        character == '{' ||
-        character == '|' ||
-        character == '}' ||
-        character == '~'
+        (character as u8 >= 0x41 && character as u8 <= 0x5A)
+            || (character as u8 >= 0x61 && character as u8 <= 0x7A)
+            || (character as u8 >= 0x30 && character as u8 <= 0x39)
+            || character == '!'
+            || character == '#'
+            || character == '$'
+            || character == '%'
+            || character == '&'
+            || character == '\''
+            || character == '*'
+            || character == '+'
+            || character == '-'
+            || character == '/'
+            || character == '='
+            || character == '?'
+            || character == '^'
+            || character == '_'
+            || character == '`'
+            || character == '{'
+            || character == '|'
+            || character == '}'
+            || character == '~'
     }
 
     fn is_qtext_smtp(character: char) -> bool {
-        (character as u8 >= 32 && character as u8 <= 33) ||
-        (character as u8 >= 35 && character as u8 <= 91) ||
-        (character as u8 >= 93 && character as u8 <= 126)
+        (character as u8 >= 32 && character as u8 <= 33)
+            || (character as u8 >= 35 && character as u8 <= 91)
+            || (character as u8 >= 93 && character as u8 <= 126)
     }
 
     fn dot_string(input: &str) -> Result<(&str, &str), Error> {
@@ -238,7 +241,7 @@ mod parsing {
         while let Some(character) = chars.next() {
             if !is_atext(character) {
                 if expects_text {
-                    return Err(Error::Known("Invalid character in the local part of a mailbox at the first position or after a dot."))
+                    return Err(Error::Known("Invalid character in the local part of a mailbox at the first position or after a dot."));
                 } else if character == '.' {
                     expects_text = true;
                 } else {
@@ -254,7 +257,11 @@ mod parsing {
     }
 
     fn quoted_string(mut input: &str) -> Result<(&str, String), Error> {
-        input = tag::<_,_,()>("\"")(input).map_err(|_| Error::Known("Expected double quote at the beginning of a quoted string."))?.0;
+        input = tag::<_, _, ()>("\"")(input)
+            .map_err(|_| {
+                Error::Known("Expected double quote at the beginning of a quoted string.")
+            })?
+            .0;
         let mut chars = input.chars();
         let mut string = String::new();
 
@@ -267,20 +274,26 @@ mod parsing {
                         string.push(character);
                     }
                     Some(_character) => {
-                        return Err(Error::Known("Invalid backslashed character in a quoted string."));
+                        return Err(Error::Known(
+                            "Invalid backslashed character in a quoted string.",
+                        ));
                     }
                     None => {
-                        return Err(Error::Known("Incomplete quoted string. Expected a character after backslash."))
+                        return Err(Error::Known(
+                            "Incomplete quoted string. Expected a character after backslash.",
+                        ))
                     }
                 }
             } else if character == '"' {
                 return Ok((chars.as_str(), string));
             } else {
-                return Err(Error::Known("Invalid character in a quoted string."))
+                return Err(Error::Known("Invalid character in a quoted string."));
             }
         }
 
-        return Err(Error::Known("Incomplete quoted string. Expected closing double quote."))
+        return Err(Error::Known(
+            "Incomplete quoted string. Expected closing double quote.",
+        ));
     }
 
     fn local_part(input: &str) -> Result<(&str, LocalPart), Error> {
@@ -289,13 +302,17 @@ mod parsing {
         } else if let Ok((i, s)) = quoted_string(input) {
             return Ok((i, LocalPart::QuotedString(s)));
         } else {
-            return Err(Error::Known("Invalid local part (invalid dot_string AND invalid quoted_string)"));
+            return Err(Error::Known(
+                "Invalid local part (invalid dot_string AND invalid quoted_string)",
+            ));
         }
     }
 
     fn mailbox(input: &str) -> Result<(&str, (LocalPart, ServerIdentity)), Error> {
         let (mut input, local_part) = local_part(input)?;
-        input = tag::<_,_,()>("@")(input).map_err(|_| Error::Known("Expecting a '@' in an email address."))?.0;
+        input = tag::<_, _, ()>("@")(input)
+            .map_err(|_| Error::Known("Expecting a '@' in an email address."))?
+            .0;
         let (input, identity) = identity(input)?;
         Ok((input, (local_part, identity)))
     }
@@ -304,7 +321,7 @@ mod parsing {
         let point_allowed = Cell::new(false);
         let hyphen_allowed = Cell::new(false);
         let end_allowed = Cell::new(false);
-        let r = take_while::<_,_,()>(|c: char| {
+        let r = take_while::<_, _, ()>(|c: char| {
             if c.is_alphanumeric() {
                 point_allowed.set(true);
                 hyphen_allowed.set(true);
@@ -322,15 +339,16 @@ mod parsing {
             } else {
                 false
             }
-        })(input).map_err(|_| Error::Unknown)?;
+        })(input)
+        .map_err(|_| Error::Unknown)?;
         if !end_allowed.get() {
-            return Err(Error::Unknown)
+            return Err(Error::Unknown);
         }
         Ok(r)
     }
 
     fn ipv4_address(input: &str) -> Result<(&str, &str), Error> {
-        let (input, _useless) = tag::<_,_,()>("[")(input).map_err(|_| Error::Unknown)?;
+        let (input, _useless) = tag::<_, _, ()>("[")(input).map_err(|_| Error::Unknown)?;
 
         let digit_idx = Cell::new(0);
         let allow_three_digits = Cell::new(true);
@@ -338,7 +356,7 @@ mod parsing {
         let allow_high_third_digit = Cell::new(true);
         let number_idx = Cell::new(0);
         let error = Cell::new(false);
-        let (input, addr) = take_while::<_,_,()>(|c: char| {
+        let (input, addr) = take_while::<_, _, ()>(|c: char| {
             let number_idx2 = digit_idx.get();
             if c.is_ascii_digit() {
                 if number_idx2 < 2 || (number_idx2 == 2 && allow_three_digits.get()) {
@@ -353,13 +371,11 @@ mod parsing {
                                 '0' | '1' => (),
                                 _ => allow_three_digits.set(false),
                             }
-                        },
-                        1 if !allow_high_second_digit.get() => {
-                            match c {
-                                '6' | '7' | '8' | '9' => allow_three_digits.set(false),
-                                '5' => allow_high_third_digit.set(false),
-                                _ => (),
-                            }
+                        }
+                        1 if !allow_high_second_digit.get() => match c {
+                            '6' | '7' | '8' | '9' => allow_three_digits.set(false),
+                            '5' => allow_high_third_digit.set(false),
+                            _ => (),
                         },
                         2 if !allow_high_third_digit.get() => {
                             if c == '6' || c == '7' || c == '8' || c == '9' {
@@ -391,31 +407,30 @@ mod parsing {
                 }
                 false
             }
-        })(input).map_err(|_| Error::Unknown)?;
+        })(input)
+        .map_err(|_| Error::Unknown)?;
 
         if error.get() {
             return Err(Error::InvalidIpv4Address);
         }
 
-        let (input, _useless) = tag::<_,_,()>("]")(input).map_err(|_| Error::Unknown)?;
+        let (input, _useless) = tag::<_, _, ()>("]")(input).map_err(|_| Error::Unknown)?;
 
         Ok((input, addr))
     }
 
     fn identity(input: &str) -> Result<(&str, ServerIdentity), Error> {
         if let Ok((input, addr)) = ipv4_address(input) {
-            return Ok((input, ServerIdentity::Ipv4(addr)))
+            return Ok((input, ServerIdentity::Ipv4(addr)));
         } else if let Ok((input, domain)) = domain(input) {
-            return Ok((input, ServerIdentity::Domain(domain)))
+            return Ok((input, ServerIdentity::Domain(domain)));
         } else {
-            return Err(Error::InvalidIdentity)
+            return Err(Error::InvalidIdentity);
         }
     }
 
-    type PATH<'a> = (Option<Vec<&'a str>>, (LocalPart<'a>, ServerIdentity<'a>));
-
     fn reverse_path(input: &str) -> Result<(&str, Option<PATH>), Error> {
-        if let Ok((i, _p)) = tag::<_,_,()>("<>")(input) {
+        if let Ok((i, _p)) = tag::<_, _, ()>("<>")(input) {
             return Ok((i, None));
         }
 
@@ -424,49 +439,58 @@ mod parsing {
     }
 
     fn source_route(mut input: &str) -> Result<(&str, Vec<&str>), Error> {
-        input = tag::<_,_,()>("@")(input).map_err(|_| Error::Known("Expected '@' at the beginning of a source route."))?.0;
+        input = tag::<_, _, ()>("@")(input)
+            .map_err(|_| Error::Known("Expected '@' at the beginning of a source route."))?
+            .0;
 
         let (mut input, first_domain) = domain(input)?;
         let mut domains = Vec::new();
         domains.push(first_domain);
 
         while !input.is_empty() {
-            match tag::<_,_,()>(",")(input) {
+            match tag::<_, _, ()>(",")(input) {
                 Ok((r, _comma)) => input = r,
                 _ => break,
             }
 
-            input = tag::<_,_,()>("@")(input).map_err(|_| Error::Known("Expected '@' after ',' in a source route."))?.0;
+            input = tag::<_, _, ()>("@")(input)
+                .map_err(|_| Error::Known("Expected '@' after ',' in a source route."))?
+                .0;
 
             let new_domain = domain(input)?;
             input = new_domain.0;
             domains.push(new_domain.1);
         }
 
-        input = tag::<_,_,()>(":")(input).map_err(|_| Error::Known("Expected ':' at the end of a source route."))?.0;
+        input = tag::<_, _, ()>(":")(input)
+            .map_err(|_| Error::Known("Expected ':' at the end of a source route."))?
+            .0;
 
         Ok((input, domains))
     }
 
     fn path(input: &str) -> Result<(&str, PATH), Error> {
-        let (mut input, _begin) = tag::<_,_,()>("<")(input).map_err(|_| Error::Known("Expected '<' at the beginning of a path."))?;
+        let (mut input, _begin) = tag::<_, _, ()>("<")(input)
+            .map_err(|_| Error::Known("Expected '<' at the beginning of a path."))?;
         let source_route = match source_route(input) {
             Ok((i, sr)) => {
                 input = i;
                 Some(sr)
-            },
+            }
             _ => None,
         };
         let (input, mailbox) = mailbox(input)?;
-        let (input, _end) = tag::<_,_,()>(">")(input).map_err(|_| Error::Known("Expected '>' at the end of a path."))?;
+        let (input, _end) = tag::<_, _, ()>(">")(input)
+            .map_err(|_| Error::Known("Expected '>' at the end of a path."))?;
 
         Ok((input, (source_route, mailbox)))
     }
 
     fn helo(input: &str) -> Result<Command, Error> {
-        let (input, _command_name) = tag_no_case::<_,_,()>("HELO ")(input).map_err(|_| Error::CommandName)?;
+        let (input, _command_name) =
+            tag_no_case::<_, _, ()>("HELO ")(input).map_err(|_| Error::CommandName)?;
         let (input, domain) = domain(input)?;
-        let (input, _end) = tag::<_,_,()>("\r\n")(input).map_err(|_| Error::ExpectedCrlf)?;
+        let (input, _end) = tag::<_, _, ()>("\r\n")(input).map_err(|_| Error::ExpectedCrlf)?;
         if !input.is_empty() {
             return Err(Error::ExpectedEndOfInput);
         }
@@ -474,24 +498,82 @@ mod parsing {
     }
 
     fn ehlo(input: &str) -> Result<Command, Error> {
-        let (input, _command_name) = tag_no_case::<_,_,()>("EHLO ")(input).map_err(|_| Error::CommandName)?;
+        let (input, _command_name) =
+            tag_no_case::<_, _, ()>("EHLO ")(input).map_err(|_| Error::CommandName)?;
         let (input, identity) = identity(input)?;
-        let (input, _end) = tag::<_,_,()>("\r\n")(input).map_err(|_| Error::ExpectedCrlf)?;
+        let (input, _end) = tag::<_, _, ()>("\r\n")(input).map_err(|_| Error::ExpectedCrlf)?;
         if !input.is_empty() {
             return Err(Error::ExpectedEndOfInput);
         }
         Ok(Command::Ehlo(identity))
     }
 
+    fn parameters(input: &str) -> Result<(&str, Vec<PARAM>), Error> {
+        let mut parameters = Vec::new();
+        let (mut input, first_param) = esmtp_param(input)?;
+        parameters.push(first_param);
+
+        while !input.is_empty() {
+            let current_input;
+            if let Ok((i, _)) = tag::<_,_,()>(" ")(input) {
+                current_input = i;
+            } else {
+                break;
+            }
+
+            if let Ok((i, param)) = esmtp_param(current_input) {
+                parameters.push(param);
+                input = i;
+            } else {
+                break;
+            }
+        }
+
+        Ok((input, parameters))
+    }
+
+    fn esmtp_param(input: &str) -> Result<(&str, PARAM), Error> {
+        let (mut input, keyword) = esmtp_keyword(input)?;
+        match tag::<_,_,()>("=")(input) {
+            Ok((i, _)) => input = i,
+            _ => return Ok((input, (keyword, None)))
+        }
+        let (input, value) = esmtp_value(input)?;
+        Ok((input, (keyword, Some(value))))
+    }
+
+    fn esmtp_keyword(input: &str) -> Result<(&str, &str), Error> {
+        let (input, keyword) = take_while1::<_, _, ()>(|character: char| {
+            (character as u8 >= 0x41 && character as u8 <= 0x5A)
+                || (character as u8 >= 0x61 && character as u8 <= 0x7A)
+                || (character as u8 >= 0x30 && character as u8 <= 0x39)
+                || character == '-'
+        })(input)
+        .map_err(|_| Error::Known("Empty esmtp_keyword"))?;
+
+        if keyword.starts_with('-') {
+            return Err(Error::Known("esmtp_keyword cannot start with a '\\\''"));
+        }
+
+        Ok((input, keyword))
+    }
+
+    fn esmtp_value(input: &str) -> Result<(&str, &str), Error> {
+        Ok(take_while1::<_, _, ()>(|character: char| {
+            character as u8 >= 33 && character as u8 <= 128 && character as u8 != 61
+        })(input)
+        .map_err(|_| Error::Known("Empty esmtp_value"))?)
+    }
+
     fn from(input: &str) -> Result<Command, Error> {
-        let (input, _command_name) = tag_no_case::<_,_,()>("MAIL FROM:")(input).map_err(|_| Error::CommandName)?;
-        let (input, identity) = reverse_path(input)?;
-        todo!();
-        let (input, _end) = tag::<_,_,()>("\r\n")(input).map_err(|_| Error::ExpectedCrlf)?;
-        /*if !input.is_empty() {
+        let (input, _command_name) =
+            tag_no_case::<_, _, ()>("MAIL FROM:")(input).map_err(|_| Error::CommandName)?;
+        let (input, path) = reverse_path(input)?;
+        let (input, _end) = tag::<_, _, ()>("\r\n")(input).map_err(|_| Error::ExpectedCrlf)?;
+        if !input.is_empty() {
             return Err(Error::ExpectedEndOfInput);
         }
-        Ok(Command::Ehlo(identity))*/
+        Ok(Command::From(path))
     }
 
     #[cfg(test)]
@@ -500,14 +582,43 @@ mod parsing {
 
         #[test]
         fn test_helo() {
-            assert_eq!(helo("HELO google.com\r\n").unwrap(), Command::Helo("google.com"));
+            assert_eq!(
+                helo("HELO google.com\r\n").unwrap(),
+                Command::Helo("google.com")
+            );
             assert!(helo("HELO google.com\r\n invalid ").is_err());
         }
 
         #[test]
+        fn test_parameters() {
+            assert_eq!(
+                parameters("AUTH=test").unwrap().1,
+                vec![("AUTH", Some("test"))]
+            );
+
+            assert_eq!(
+                parameters("AUTH=test PARAM-3=value > lorem ipsum dolor sit amet").unwrap().1,
+                vec![("AUTH", Some("test")), ("PARAM-3", Some("value"))]
+            );
+
+            assert_eq!(
+                parameters("AUTH=test PARAM-3=value lorem ipsum").unwrap().1,
+                vec![("AUTH", Some("test")), ("PARAM-3", Some("value")), ("lorem", None), ("ipsum", None)]
+            );
+
+            assert!(parameters("-invalidname=data").is_err());
+        }
+
+        #[test]
         fn test_ehlo() {
-            assert_eq!(ehlo("EHLO google.com\r\n").unwrap(), Command::Ehlo(ServerIdentity::Domain("google.com")));
-            assert_eq!(ehlo("EHLO [192.168.1.1]\r\n").unwrap(), Command::Ehlo(ServerIdentity::Ipv4("192.168.1.1")));
+            assert_eq!(
+                ehlo("EHLO google.com\r\n").unwrap(),
+                Command::Ehlo(ServerIdentity::Domain("google.com"))
+            );
+            assert_eq!(
+                ehlo("EHLO [192.168.1.1]\r\n").unwrap(),
+                Command::Ehlo(ServerIdentity::Ipv4("192.168.1.1"))
+            );
             // todo ipv6
             assert!(ehlo("EHLO google.com\r\n invalid ").is_err());
         }
@@ -515,33 +626,95 @@ mod parsing {
         #[test]
         fn test_reverse_path() {
             assert_eq!(reverse_path("<>").unwrap().1, None);
-            assert_eq!(reverse_path("<mubelotix@mubelotix.dev>").unwrap().1, Some((None, (LocalPart::DotString("mubelotix"), ServerIdentity::Domain("mubelotix.dev")))));
-            assert_eq!(reverse_path("<@example.com,@gmail.com:mubelotix@mubelotix.dev>").unwrap().1, Some((Some(vec!["example.com", "gmail.com"]), (LocalPart::DotString("mubelotix"), ServerIdentity::Domain("mubelotix.dev")))));
+            assert_eq!(
+                reverse_path("<mubelotix@mubelotix.dev>").unwrap().1,
+                Some((
+                    None,
+                    (
+                        LocalPart::DotString("mubelotix"),
+                        ServerIdentity::Domain("mubelotix.dev")
+                    )
+                ))
+            );
+            assert_eq!(
+                reverse_path("<@example.com,@gmail.com:mubelotix@mubelotix.dev>")
+                    .unwrap()
+                    .1,
+                Some((
+                    Some(vec!["example.com", "gmail.com"]),
+                    (
+                        LocalPart::DotString("mubelotix"),
+                        ServerIdentity::Domain("mubelotix.dev")
+                    )
+                ))
+            );
         }
 
         #[test]
         fn test_mailbox() {
-            assert_eq!(mailbox("test@example.com").unwrap().1, (LocalPart::DotString("test"), ServerIdentity::Domain("example.com")));
-            assert_eq!(mailbox("john.snow@mubelotix.dev").unwrap().1, (LocalPart::DotString("john.snow"), ServerIdentity::Domain("mubelotix.dev")));
-            assert_eq!(mailbox("john.snow@[192.168.1.1]").unwrap().1, (LocalPart::DotString("john.snow"), ServerIdentity::Ipv4("192.168.1.1")));
-            assert_eq!(mailbox("\"John\\ Snow\"@gmail.com").unwrap().1, (LocalPart::QuotedString("John Snow".to_string()), ServerIdentity::Domain("gmail.com")));
+            assert_eq!(
+                mailbox("test@example.com").unwrap().1,
+                (
+                    LocalPart::DotString("test"),
+                    ServerIdentity::Domain("example.com")
+                )
+            );
+            assert_eq!(
+                mailbox("john.snow@mubelotix.dev").unwrap().1,
+                (
+                    LocalPart::DotString("john.snow"),
+                    ServerIdentity::Domain("mubelotix.dev")
+                )
+            );
+            assert_eq!(
+                mailbox("john.snow@[192.168.1.1]").unwrap().1,
+                (
+                    LocalPart::DotString("john.snow"),
+                    ServerIdentity::Ipv4("192.168.1.1")
+                )
+            );
+            assert_eq!(
+                mailbox("\"John\\ Snow\"@gmail.com").unwrap().1,
+                (
+                    LocalPart::QuotedString("John Snow".to_string()),
+                    ServerIdentity::Domain("gmail.com")
+                )
+            );
         }
 
         #[test]
         fn test_source_route() {
-            assert_eq!(source_route("@example.com,@google.com,@mubelotix.dev:").unwrap().1, vec!["example.com", "google.com", "mubelotix.dev"]);
-            assert_eq!(source_route("@example.com:mubelotix@mubelotix.dev").unwrap().1, vec!["example.com"]);
+            assert_eq!(
+                source_route("@example.com,@google.com,@mubelotix.dev:")
+                    .unwrap()
+                    .1,
+                vec!["example.com", "google.com", "mubelotix.dev"]
+            );
+            assert_eq!(
+                source_route("@example.com:mubelotix@mubelotix.dev")
+                    .unwrap()
+                    .1,
+                vec!["example.com"]
+            );
         }
 
         #[test]
         fn test_strings() {
             assert_eq!(dot_string("mubelotix").unwrap().1, "mubelotix");
-            assert_eq!(dot_string("mubelotix@mubelotix.dev").unwrap().1, "mubelotix");
+            assert_eq!(
+                dot_string("mubelotix@mubelotix.dev").unwrap().1,
+                "mubelotix"
+            );
             assert_eq!(dot_string("john.snow@example.com").unwrap().1, "john.snow");
             assert!(dot_string("john..snow@example.com").is_err());
 
             assert_eq!(quoted_string(r#""John\ Snow""#).unwrap().1, "John Snow");
-            assert_eq!(quoted_string(r#""This\,\ is\ a\ \(valid\)\ email\ address\.""#).unwrap().1, "This, is a (valid) email address.");
+            assert_eq!(
+                quoted_string(r#""This\,\ is\ a\ \(valid\)\ email\ address\.""#)
+                    .unwrap()
+                    .1,
+                "This, is a (valid) email address."
+            );
         }
 
         #[test]

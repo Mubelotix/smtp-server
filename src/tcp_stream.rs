@@ -112,7 +112,7 @@ impl Stream {
             Ok(reply) => {
                 debug!("\x1B[32m{:?}\x1B[0m", reply);
                 Ok(reply.parse())
-            },
+            }
             Err(_e) => Ok(Err("Invalid utf8")),
         }
     }

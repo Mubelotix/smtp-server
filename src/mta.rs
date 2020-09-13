@@ -1,12 +1,17 @@
+use crate::{
+    address::EmailAddress,
+    commands::Command,
+    replies::{Reply, ReplyType},
+    tcp_stream::Stream,
+};
+use email::MimeMessage;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use native_tls::TlsConnector;
-use trust_dns_resolver::Resolver;
-use std::io::{prelude::*};
+use std::io::prelude::*;
+use std::net::TcpStream;
 use trust_dns_resolver::config::*;
-use crate::{address::EmailAddress, tcp_stream::Stream, commands::Command, replies::{ReplyType, Reply}};
-use std::{net::TcpStream};
-use email::MimeMessage;
+use trust_dns_resolver::Resolver;
 
 pub enum MTAError {
     IOError(std::io::Error),
@@ -42,7 +47,12 @@ impl From<native_tls::HandshakeError<std::net::TcpStream>> for MTAError {
     }
 }
 
-pub fn transfert_mail(to: &EmailAddress, from: &EmailAddress, mail: MimeMessage, domain: &str) -> Result<(), MTAError> {
+pub fn transfert_mail(
+    to: &EmailAddress,
+    from: &EmailAddress,
+    mail: MimeMessage,
+    domain: &str,
+) -> Result<(), MTAError> {
     let resolver = Resolver::new(ResolverConfig::default(), ResolverOpts::default())?;
     let response = resolver.mx_lookup(&to.domain)?;
 
@@ -61,29 +71,44 @@ pub fn transfert_mail(to: &EmailAddress, from: &EmailAddress, mail: MimeMessage,
     let mda_address = match resolver.lookup_ip(&mda_domain)?.iter().next() {
         Some(addr) => addr,
         None => {
-            warn!("Domain {} referenced by MX record has no associated ip address", mda_domain);
+            warn!(
+                "Domain {} referenced by MX record has no associated ip address",
+                mda_domain
+            );
             return Err(MTAError::DeadMxRecord);
         }
     };
 
     debug!("Connecting to {}.", mda_domain);
     let mut stream = Stream::Unencryted(TcpStream::connect((mda_address, 25))?);
-    
+
     // Get the init message and send Ehlo
-    if let Ok(Ok(Reply{reply_type: ReplyType::ServiceReady, message})) = stream.read_reply() {
+    if let Ok(Ok(Reply {
+        reply_type: ReplyType::ServiceReady,
+        message,
+    })) = stream.read_reply()
+    {
         mda_domain = string_tools::get_all_before(&message, " ").to_string();
         stream.send_command(Command::Ehlo(domain.to_string()))?;
     } else {
         warn!("Service is not ready");
         return Err(MTAError::ServiceNotReady);
     }
-    
+
     // Get the Ehlo response
-    if let Ok(Ok(Reply{reply_type: ReplyType::Ok, message})) = stream.read_reply() {
+    if let Ok(Ok(Reply {
+        reply_type: ReplyType::Ok,
+        message,
+    })) = stream.read_reply()
+    {
         if message.contains("\nSTARTTLS\n") {
             stream.send_command(Command::StartTls)?;
 
-            if let Ok(Ok(Reply{reply_type: ReplyType::ServiceReady, message: _})) = stream.read_reply() {
+            if let Ok(Ok(Reply {
+                reply_type: ReplyType::ServiceReady,
+                message: _,
+            })) = stream.read_reply()
+            {
                 if let Stream::Unencryted(old_stream) = stream {
                     let connector = TlsConnector::new()?;
                     match connector.connect(&mda_domain, old_stream) {
@@ -92,14 +117,18 @@ pub fn transfert_mail(to: &EmailAddress, from: &EmailAddress, mail: MimeMessage,
                             stream = Stream::Encrypted(new_stream);
                             stream.send_command(Command::Ehlo(domain.to_string()))?;
 
-                            if let Ok(Ok(Reply{reply_type: ReplyType::Ok, message})) = stream.read_reply() {
+                            if let Ok(Ok(Reply {
+                                reply_type: ReplyType::Ok,
+                                message,
+                            })) = stream.read_reply()
+                            {
                                 println!("{:?}", message);
                             }
-                        },
+                        }
                         Err(e) => {
                             warn!("Failed to enable TLS {}", e);
                             return Err(MTAError::TlsHandshakeError(e));
-                        },
+                        }
                     };
                 }
             }
@@ -111,8 +140,11 @@ pub fn transfert_mail(to: &EmailAddress, from: &EmailAddress, mail: MimeMessage,
 
     stream.send_command(Command::Mail(from.clone()))?;
 
-    if let Ok(Ok(Reply{reply_type: ReplyType::Ok, message: _})) = stream.read_reply() {
-        
+    if let Ok(Ok(Reply {
+        reply_type: ReplyType::Ok,
+        message: _,
+    })) = stream.read_reply()
+    {
     } else {
         warn!("Service refused MAIL FROM:");
         return Err(MTAError::ServiceNotReady);
@@ -122,7 +154,7 @@ pub fn transfert_mail(to: &EmailAddress, from: &EmailAddress, mail: MimeMessage,
     stream.read_reply()?;
     stream.send_command(Command::Data)?;
     stream.read_reply()?;
-    
+
     let mail = mail.as_string();
     let mail = mail.as_bytes();
     let mut requests = 0;
@@ -134,6 +166,6 @@ pub fn transfert_mail(to: &EmailAddress, from: &EmailAddress, mail: MimeMessage,
 
     stream.read_reply()?;
     stream.send_command(Command::Quit)?;
-    
+
     Ok(())
 }

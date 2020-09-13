@@ -1,13 +1,22 @@
-use crate::{address::EmailAddress, mta::transfert_mail, tcp_stream::Stream, replies::Reply, commands::Command};
-use std::{net::TcpStream, sync::Arc, io::prelude::*};
-use native_tls::{TlsAcceptor};
+use crate::{
+    address::EmailAddress, commands::Command, mta::transfert_mail, replies::Reply,
+    tcp_stream::Stream,
+};
 use email::MimeMessage;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
+use native_tls::TlsAcceptor;
+use std::{io::prelude::*, net::TcpStream, sync::Arc};
 
-pub fn handle_client(stream: TcpStream, tls_acceptor: Option<Arc<TlsAcceptor>>, domain: &str) -> std::io::Result<()> {
+pub fn handle_client(
+    stream: TcpStream,
+    tls_acceptor: Option<Arc<TlsAcceptor>>,
+    domain: &str,
+) -> std::io::Result<()> {
     let mut stream = Stream::Unencryted(stream);
-    stream.send_reply(Reply::ServiceReady().with_message(format!("{} Rust SMTP Server v1.0", domain)))?;
+    stream.send_reply(
+        Reply::ServiceReady().with_message(format!("{} Rust SMTP Server v1.0", domain)),
+    )?;
 
     assert!(tls_acceptor.is_some());
 
@@ -19,9 +28,9 @@ pub fn handle_client(stream: TcpStream, tls_acceptor: Option<Arc<TlsAcceptor>>, 
         let command = match stream.read_command()? {
             Ok(command) => command,
             Err(e) => {
-                stream.send_reply(Reply::SyntaxError().with_message(String::from(
-                    "That command was strange!",
-                )))?;
+                stream.send_reply(
+                    Reply::SyntaxError().with_message(String::from("That command was strange!")),
+                )?;
                 warn!("Failed to parse command: {:?}", e);
                 continue;
             }
@@ -49,15 +58,19 @@ pub fn handle_client(stream: TcpStream, tls_acceptor: Option<Arc<TlsAcceptor>>, 
 
                     stream.send_reply(Reply::Ok())?;
                 } else if let Some(from) = &from {
-                    if /*from.domain == domain ||*/ true {
+                    if
+                    /*from.domain == domain ||*/
+                    true {
                         to.push(address);
 
                         stream.send_reply(Reply::Ok())?;
                     } else {
-                        stream.send_reply(Reply::UnableToAccomodateParameters().with_message(format!(
-                            "The address {} is not hosted on this domain ({})",
-                            address, domain
-                        )))?;
+                        stream.send_reply(Reply::UnableToAccomodateParameters().with_message(
+                            format!(
+                                "The address {} is not hosted on this domain ({})",
+                                address, domain
+                            ),
+                        ))?;
                     }
                 }
             }
@@ -123,8 +136,10 @@ pub fn handle_client(stream: TcpStream, tls_acceptor: Option<Arc<TlsAcceptor>>, 
                         }
                     }
                 } else {
-                    stream
-                        .send_reply(Reply::ActionNotTaken().with_message(String::from("TLS can't be activated")))?;
+                    stream.send_reply(
+                        Reply::ActionNotTaken()
+                            .with_message(String::from("TLS can't be activated")),
+                    )?;
                 }
             }
             Command::Auth(data) => {

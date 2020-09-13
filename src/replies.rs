@@ -11,7 +11,7 @@ impl Reply {
     pub fn Ok() -> Reply {
         Reply {
             reply_type: ReplyType::Ok,
-            message: String::from("OK")
+            message: String::from("OK"),
         }
     }
 
@@ -21,147 +21,147 @@ impl Reply {
             message: String::from("undefined"),
         }
     }
-    
+
     pub fn HelpMessage() -> Reply {
         Reply {
             reply_type: ReplyType::HelpMessage,
             message: String::from("undefined"),
         }
     }
-    
+
     pub fn ServiceReady() -> Reply {
         Reply {
             reply_type: ReplyType::ServiceReady,
             message: String::from("undefined"),
         }
     }
-    
+
     pub fn ServiceClosingTransmissionChannel() -> Reply {
         Reply {
             reply_type: ReplyType::ServiceClosingTransmissionChannel,
             message: String::from("undefined"),
         }
     }
-    
+
     pub fn UserNotLocalHandled() -> Reply {
         Reply {
             reply_type: ReplyType::UserNotLocalHandled,
             message: String::from("undefined"),
         }
     }
-    
+
     pub fn UserNotLocal() -> Reply {
         Reply {
             reply_type: ReplyType::UserNotLocal,
             message: String::from("undefined"),
         }
     }
-    
+
     pub fn CannotVerifyUser() -> Reply {
         Reply {
             reply_type: ReplyType::CannotVerifyUser,
             message: String::from("undefined"),
         }
     }
-    
+
     pub fn StartMailInput() -> Reply {
         Reply {
             reply_type: ReplyType::StartMailInput,
             message: String::from("undefined"),
         }
     }
-    
+
     pub fn ServiceUnavailable() -> Reply {
         Reply {
             reply_type: ReplyType::ServiceUnavailable,
             message: String::from("undefined"),
         }
     }
-    
+
     pub fn MailActionNotTaken() -> Reply {
         Reply {
             reply_type: ReplyType::MailActionNotTaken,
             message: String::from("undefined"),
         }
     }
-    
+
     pub fn ActionNotTaken() -> Reply {
         Reply {
             reply_type: ReplyType::ActionNotTaken,
             message: String::from("undefined"),
         }
     }
-    
+
     pub fn MailActionAborted() -> Reply {
         Reply {
             reply_type: ReplyType::MailActionAborted,
             message: String::from("undefined"),
         }
     }
-    
+
     pub fn ActionAborted() -> Reply {
         Reply {
             reply_type: ReplyType::ActionAborted,
             message: String::from("undefined"),
         }
     }
-    
+
     pub fn InsufficientStorage() -> Reply {
         Reply {
             reply_type: ReplyType::InsufficientStorage,
             message: String::from("undefined"),
         }
     }
-    
+
     pub fn UnableToAccomodateParameters() -> Reply {
         Reply {
             reply_type: ReplyType::UnableToAccomodateParameters,
             message: String::from("undefined"),
         }
     }
-    
+
     pub fn SyntaxError() -> Reply {
         Reply {
             reply_type: ReplyType::SyntaxError,
             message: String::from("undefined"),
         }
     }
-    
+
     pub fn SyntaxErrorInParametersOrArguments() -> Reply {
         Reply {
             reply_type: ReplyType::SyntaxErrorInParametersOrArguments,
             message: String::from("undefined"),
         }
     }
-    
+
     pub fn CommandNotImplemented() -> Reply {
         Reply {
             reply_type: ReplyType::CommandNotImplemented,
             message: String::from("undefined"),
         }
     }
-    
+
     pub fn BadSequenceOfCommands() -> Reply {
         Reply {
             reply_type: ReplyType::BadSequenceOfCommands,
             message: String::from("undefined"),
         }
     }
-    
+
     pub fn CommandParameterNotImplemented() -> Reply {
         Reply {
             reply_type: ReplyType::CommandParameterNotImplemented,
             message: String::from("undefined"),
         }
     }
-    
+
     pub fn MailboxNameError() -> Reply {
         Reply {
             reply_type: ReplyType::MailboxNameError,
             message: String::from("undefined"),
         }
     }
-    
+
     pub fn TransactionFailed() -> Reply {
         Reply {
             reply_type: ReplyType::TransactionFailed,
@@ -170,10 +170,7 @@ impl Reply {
     }
 
     pub fn with_message(self, message: String) -> Reply {
-        Reply {
-            message,
-            ..self
-        }
+        Reply { message, ..self }
     }
 }
 
@@ -181,7 +178,7 @@ impl From<(usize, String)> for Reply {
     fn from((code, message): (usize, String)) -> Reply {
         Reply {
             reply_type: ReplyType::from(code),
-            message
+            message,
         }
     }
 }
@@ -274,7 +271,7 @@ impl From<usize> for ReplyType {
             code => {
                 warn!("Unknown code \"{}\".", code);
                 ReplyType::Unknown
-            },
+            }
         }
     }
 }
