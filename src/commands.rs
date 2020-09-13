@@ -62,6 +62,8 @@ pub enum Command2<'a> {
     Expand(SmtpString<'a>),
     Help(Option<SmtpString<'a>>),
     Noop(Option<SmtpString<'a>>),
+    Quit,
+    StartTLS,
 }
 
 impl<'a> ToString for Command<'a> {
@@ -668,6 +670,24 @@ mod parsing {
         Ok(Command::Data)
     }
 
+    fn start_tls(input: &str) -> Result<Command, Error> {
+        let (input, _) = tag_no_case::<_,_,()>("STARTTLS\r\n")(input).map_err(|_| Error::CommandName)?;
+        if !input.is_empty() {
+            return Err(Error::ExpectedEndOfInput);
+        }
+
+        Ok(Command::StartTLS)
+    }
+
+    fn quit(input: &str) -> Result<Command, Error> {
+        let (input, _) = tag_no_case::<_,_,()>("QUIT\r\n")(input).map_err(|_| Error::CommandName)?;
+        if !input.is_empty() {
+            return Err(Error::ExpectedEndOfInput);
+        }
+
+        Ok(Command::Quit)
+    }
+
     fn reset(input: &str) -> Result<Command, Error> {
         let (input, _) = tag_no_case::<_,_,()>("RSET\r\n")(input).map_err(|_| Error::CommandName)?;
         if !input.is_empty() {
@@ -745,7 +765,7 @@ mod parsing {
         }
 
         #[test]
-        fn test_data_and_reset() {
+        fn test_data_reset_quit_starttls() {
             assert_eq!(
                 data("DATA\r\n").unwrap(),
                 Command::Data
@@ -753,6 +773,14 @@ mod parsing {
             assert_eq!(
                 reset("RSET\r\n").unwrap(),
                 Command::Reset
+            );
+            assert_eq!(
+                quit("QUIT\r\n").unwrap(),
+                Command::Quit
+            );
+            assert_eq!(
+                start_tls("STARTTLS\r\n").unwrap(),
+                Command::StartTLS
             );
             assert!(data("DATA\r\n email data").is_err());
         }
