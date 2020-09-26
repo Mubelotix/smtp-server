@@ -6,7 +6,6 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::sync::Arc;
 
-pub mod address;
 pub mod commands;
 pub mod mda;
 pub mod mta;
