@@ -1,16 +1,5 @@
-use crate::{
-    address::EmailAddress,
-    commands::Command,
-    replies::{Reply, ReplyType},
-};
-use email::MimeMessage;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use native_tls::TlsConnector;
-use std::io::prelude::*;
-use std::net::TcpStream;
-use trust_dns_resolver::config::*;
-use trust_dns_resolver::Resolver;
 
 pub enum MTAError {
     IOError(std::io::Error),

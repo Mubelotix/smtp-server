@@ -1,11 +1,10 @@
 use crate::{
-    address::EmailAddress, commands::*, /*mta::transfert_mail, */replies::Reply,
+    commands::*, /*mta::transfert_mail, */replies::Reply,
 };
-use email::MimeMessage;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use tokio::prelude::*;
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::TcpStream;
 use bytes::BytesMut;
 use std::sync::Arc;
 
@@ -42,16 +41,17 @@ impl<'a> From<Recipient<'a>> for OwnedRecipient {
     }
 }
 
-pub async fn handle_client<F, F2>(mut socket: TcpStream, domain: Arc<String>, mut verify_user: F, mut get_mailing_list: F2) where
+pub async fn handle_client<F, F2, F3>(mut socket: TcpStream, domain: Arc<String>, mut verify_user: F, mut get_mailing_list: F2, mut deliver_mail: F3) where
     F: FnMut(&str) -> bool,
-    F2: FnMut(&str) -> Option<Vec<String>> {
+    F2: FnMut(&str) -> Option<Vec<String>>,
+    F3: FnMut((String, OwnedServerIdentity), Vec<OwnedRecipient>, &str) -> Result<(), &'static str> {
     println!("GOT: {:?}", socket);
 
     socket.write_all(Reply::ServiceReady().with_message(format!(
         "{} Rust SMTP Server v0.1", domain
     )).to_string().as_bytes()).await.unwrap();
 
-    let mut reverse_path: Option<(LocalPart, ServerIdentity)> = None;
+    let mut reverse_path: Option<(String, OwnedServerIdentity)> = None;
     let mut forward_path: Vec<OwnedRecipient> = Vec::new();
 
     loop {
@@ -90,10 +90,18 @@ pub async fn handle_client<F, F2>(mut socket: TcpStream, domain: Arc<String>, mu
                 )).to_string().as_bytes()).await.unwrap();
             },
             Command::From(path, _parameters) => {
-                if let Some(path) = path {
+                if let Some(Path(_sr,(lp, si))) = path {
                     // TODO verify identity
-                    reverse_path = Some(path.1);
-                    //forward_path.clear();
+                    let lp = match lp {
+                        LocalPart::DotString(ds) => ds.to_string(),
+                        LocalPart::QuotedString(qs) => qs,
+                    };
+                    let si = match si {
+                        ServerIdentity::Domain(d) => OwnedServerIdentity::Domain(d.to_string()),
+                        ServerIdentity::Ipv4(ip) => OwnedServerIdentity::Ipv4(ip.to_string()),
+                    };
+                    reverse_path = Some((lp, si));
+                    forward_path.clear();
 
                     socket.write_all(Reply::Ok().with_message(format!(
                         "user recognized"
@@ -182,18 +190,27 @@ pub async fn handle_client<F, F2>(mut socket: TcpStream, domain: Arc<String>, mu
                 )).to_string().as_bytes()).await.unwrap();
                 let mut b = BytesMut::new();
                 loop {
-                    let n = socket.read_buf(&mut b).await.unwrap();
+                    socket.read_buf(&mut b).await.unwrap();
                     if b.ends_with(b"\r\n.\r\n") {
                         break;
                     }
                 }
                 b.truncate(b.len() - 3);
+                let mail = std::str::from_utf8(&b).unwrap();
                 
                 println!("{}", std::str::from_utf8(&b).unwrap());
 
-                socket.write_all(Reply::Ok().with_message(format!(
-                    "Menace 1-5, all bytes are down and the mail is secure.",
-                )).to_string().as_bytes()).await.unwrap();
+                match deliver_mail(reverse_path.take().unwrap(), forward_path, mail) {
+                    Ok(()) => socket.write_all(Reply::Ok().with_message(format!(
+                        "Menace 1-5, all bytes are down and the mail is secure.",
+                    )).to_string().as_bytes()).await.unwrap(),
+                    Err(e) => socket.write_all(Reply::ActionAborted().with_message(format!(
+                        "Mail not delivered: {}", e
+                    )).to_string().as_bytes()).await.unwrap()
+                }
+                forward_path = Vec::new();
+
+                
             }
         }
     }

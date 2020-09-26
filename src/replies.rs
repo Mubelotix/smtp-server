@@ -7,6 +7,7 @@ pub struct Reply {
     pub message: String,
 }
 
+#[allow(non_snake_case)]
 impl Reply {
     pub fn Ok() -> Reply {
         Reply {

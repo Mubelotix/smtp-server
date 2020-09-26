@@ -3,7 +3,7 @@
 use log::{debug, error, info, trace, warn};
 use native_tls::{Identity, TlsAcceptor};
 use std::fs::File;
-use std::io::{prelude::*, ErrorKind};
+use std::io::prelude::*;
 use std::sync::Arc;
 
 pub mod address;
@@ -15,9 +15,7 @@ pub mod replies;
 use clap::clap_app;
 use mda::handle_client;
 
-use tokio::prelude::*;
-use tokio::net::{TcpListener, TcpStream};
-use bytes::BytesMut;
+use tokio::net::TcpListener;
 
 #[tokio::main]
 async fn main() {
@@ -77,6 +75,9 @@ async fn main() {
                 } else {
                     None
                 }
+            }, |_from, _to, _mail| {
+                println!("Received a mail!!");
+                Ok(())
             }).await;
         });
     }

@@ -1,7 +1,5 @@
-use crate::address::EmailAddress;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use string_tools::*;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum ServerIdentity<'a> {
