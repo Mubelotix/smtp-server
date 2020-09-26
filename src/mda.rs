@@ -47,6 +47,10 @@ pub async fn handle_client<F, F2>(mut socket: TcpStream, domain: Arc<String>, mu
     F2: FnMut(&str) -> Option<Vec<String>> {
     println!("GOT: {:?}", socket);
 
+    socket.write_all(Reply::ServiceReady().with_message(format!(
+        "{} Rust SMTP Server v0.1", domain
+    )).to_string().as_bytes()).await.unwrap();
+
     let mut reverse_path: Option<(LocalPart, ServerIdentity)> = None;
     let mut forward_path: Vec<OwnedRecipient> = Vec::new();
 
@@ -169,6 +173,7 @@ pub async fn handle_client<F, F2>(mut socket: TcpStream, domain: Arc<String>, mu
                     "Goodbye!",
                 )).to_string().as_bytes()).await.unwrap();
                 socket.shutdown(std::net::Shutdown::Both).unwrap();
+                break;
             }
             Command::StartTLS => socket.write_all(Reply::CommandNotImplemented().to_string().as_bytes()).await.unwrap(),
             Command::Data => {
@@ -185,6 +190,10 @@ pub async fn handle_client<F, F2>(mut socket: TcpStream, domain: Arc<String>, mu
                 b.truncate(b.len() - 3);
                 
                 println!("{}", std::str::from_utf8(&b).unwrap());
+
+                socket.write_all(Reply::Ok().with_message(format!(
+                    "Menace 1-5, all bytes are down and the mail is secure.",
+                )).to_string().as_bytes()).await.unwrap();
             }
         }
     }
