@@ -2,7 +2,6 @@ use crate::{
     address::EmailAddress,
     commands::Command,
     replies::{Reply, ReplyType},
-    tcp_stream::Stream,
 };
 use email::MimeMessage;
 #[allow(unused_imports)]
@@ -47,6 +46,7 @@ impl From<native_tls::HandshakeError<std::net::TcpStream>> for MTAError {
     }
 }
 
+/*
 pub fn transfert_mail(
     to: &EmailAddress,
     from: &EmailAddress,
@@ -169,3 +169,4 @@ pub fn transfert_mail(
 
     Ok(())
 }
+*/

@@ -3,16 +3,34 @@ use crate::address::EmailAddress;
 use log::{debug, error, info, trace, warn};
 use string_tools::*;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum ServerIdentity<'a> {
     Domain(&'a str),
     Ipv4(&'a str),
 }
 
-#[derive(Debug, PartialEq)]
+impl<'a> std::fmt::Display for ServerIdentity<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ServerIdentity::Domain(s) => write!(f, "{}", s),
+            ServerIdentity::Ipv4(s) => write!(f, "[{}]", s),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum LocalPart<'a> {
     DotString(&'a str),
     QuotedString(String),
+}
+
+impl<'a> std::fmt::Display for LocalPart<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LocalPart::DotString(s) => write!(f, "{}", s),
+            LocalPart::QuotedString(s) => write!(f, "{}", s),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -21,40 +39,41 @@ pub enum SmtpString<'a> {
     QuotedString(String),
 }
 
-type PATH<'a> = (Vec<&'a str>, (LocalPart<'a>, ServerIdentity<'a>));
+impl<'a> std::fmt::Display for SmtpString<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SmtpString::Atom(s) => write!(f, "{}", s),
+            SmtpString::QuotedString(s) => write!(f, "{}", s),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct Path<'a> (pub Vec<&'a str>, pub (LocalPart<'a>, ServerIdentity<'a>));
 type PARAM<'a> = (&'a str, Option<&'a str>);
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Recipient<'a> {
     LocalPostmaster,
     Postmaster(&'a str),
-    Path(PATH<'a>),
+    Path(Path<'a>),
+}
+
+impl<'a> std::fmt::Display for Recipient<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Recipient::Postmaster(s) => write!(f, "<postmaster@{}>", s),
+            Recipient::LocalPostmaster => write!(f, "<postmaster>"),
+            Recipient::Path(Path(_r, (l, s))) => write!(f, "<{}@{}>", l, s),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
 pub enum Command<'a> {
-    Helo(String),
-    Helo2(&'a str),
-    Ehlo(String),
-    Ehlo2(ServerIdentity<'a>),
-    Mail(EmailAddress),
-    Reset,
-    Recipient(EmailAddress),
-    Verify(EmailAddress),
-    Expand(String),
-    Help,
-    Noop,
-    Quit,
-    Data,
-    StartTls,
-    Auth(String),
-}
-
-#[derive(Debug, PartialEq)]
-pub enum Command2<'a> {
     Helo(&'a str),
     Ehlo(ServerIdentity<'a>),
-    From(Option<PATH<'a>>, Vec<PARAM<'a>>),
+    From(Option<Path<'a>>, Vec<PARAM<'a>>),
     To(Recipient<'a>, Vec<PARAM<'a>>),
     Data,
     Reset,
@@ -68,148 +87,25 @@ pub enum Command2<'a> {
 
 impl<'a> ToString for Command<'a> {
     fn to_string(&self) -> String {
-        match self {
-            Command::Helo(domain) => format!("HELO {}\r\n", domain),
-            Command::Ehlo(domain) => format!("EHLO {}\r\n", domain),
-            Command::Mail(adress) => format!("MAIL FROM:<{}>\r\n", adress),
-            Command::Recipient(adress) => format!("RCPT TO:<{}>\r\n", adress),
-            Command::Data => "DATA\r\n".to_string(),
-            Command::Reset => "RSET\r\n".to_string(),
-            Command::Verify(user) => format!("VRFY {}\r\n", user),
-            Command::Expand(mailing_list) => format!("EXPN {}\r\n", mailing_list),
-            Command::Help => "HELP\r\n".to_string(),
-            Command::Noop => "NOOP\r\n".to_string(),
-            Command::Quit => "QUIT\r\n".to_string(),
-            Command::StartTls => "STARTTLS\r\n".to_string(),
-            Command::Auth(mechanism) => format!("AUTH {}\r\n", mechanism),
-            _ => todo!(),
-        }
+        todo!()
     }
 }
 
-#[derive(Debug)]
-pub enum ParsingCommandError {
-    UnknownCommand,
-    SyntaxErrorInParameter(&'static str),
-}
-
-impl<'a> std::str::FromStr for Command<'a> {
-    type Err = ParsingCommandError;
-
-    fn from_str(mut command: &str) -> Result<Command<'a>, Self::Err> {
-        match command.to_ascii_uppercase() {
-            c if c.starts_with("EHLO ") => {
-                let c = &command[5..];
-
-                let mut domain = String::new();
-                let mut last_was_point = false;
-
-                for character in get_all_before(&c, "\r\n").chars() {
-                    if character.is_ascii() {
-                        domain.push(character);
-                        last_was_point = false;
-                    } else if character == '.' && !last_was_point {
-                        domain.push(character);
-                        last_was_point = true;
-                    } else {
-                        warn!("Unexpected character while parsing the domain name in the EHLO command: {:?}. Ignoring.", character);
-                    }
-                }
-
-                Ok(Command::Ehlo(domain))
-            }
-            c if c.starts_with("HELO ") => {
-                let c = &command[5..];
-
-                let mut domain = String::new();
-                let mut last_was_point = false;
-
-                for character in get_all_before(&c, "\r\n").chars() {
-                    if character.is_ascii_lowercase() || character == '-' {
-                        domain.push(character);
-                        last_was_point = false;
-                    } else if character == '.' && !last_was_point {
-                        domain.push(character);
-                        last_was_point = true;
-                    } else {
-                        warn!("Unexpected character while parsing the domain name in the EHLO command: {:?}. Ignoring.", character);
-                    }
-                }
-
-                Ok(Command::Helo(domain))
-            }
-            c if c.starts_with("VRFY ") => {
-                command = &command[5..];
-                command = command.trim();
-
-                if command.starts_with('<') && command.ends_with('>') {
-                    command = &command[1..command.len() - 1];
-                }
-
-                let address = match command.parse::<EmailAddress>() {
-                    Ok(address) => address,
-                    Err(e) => return Err(ParsingCommandError::SyntaxErrorInParameter(e)),
-                };
-                Ok(Command::Verify(address))
-            }
-            c if c.starts_with("EXPN ") => Ok(Command::Expand(String::new())),
-            c if c.starts_with("HELP ") => Ok(Command::Help),
-            c if c.starts_with("NOOP ") => Ok(Command::Noop),
-            c if c.starts_with("QUIT") => Ok(Command::Quit),
-            c if c.starts_with("MAIL FROM:") => {
-                command = &command[10..];
-                command = command.trim();
-
-                command = string_tools::get_all_between(command, "<", ">");
-
-                let address = match command.parse::<EmailAddress>() {
-                    Ok(address) => address,
-                    Err(e) => return Err(ParsingCommandError::SyntaxErrorInParameter(e)),
-                };
-
-                Ok(Command::Mail(address))
-            }
-            c if c.starts_with("RCPT TO:") => {
-                command = &command[8..];
-                command = command.trim();
-
-                if command.starts_with('<') && command.ends_with('>') {
-                    command = &command[1..command.len() - 1];
-                }
-
-                let address = match command.parse::<EmailAddress>() {
-                    Ok(address) => address,
-                    Err(e) => return Err(ParsingCommandError::SyntaxErrorInParameter(e)),
-                };
-
-                Ok(Command::Recipient(address))
-            }
-            c if c.starts_with("AUTH ") => {
-                let data = &command[5..];
-                Ok(Command::Auth(data.to_string()))
-            }
-            c if c.starts_with("DATA") => Ok(Command::Data),
-            c if c.starts_with("RSET") => Ok(Command::Reset),
-            c if c.starts_with("STARTTLS") => Ok(Command::StartTls),
-            _c => Err(ParsingCommandError::UnknownCommand),
-        }
+impl<'a> Command<'a> {
+    pub fn from_str(input: &'a str) -> Result<Command<'a>, parsing::Error> {
+        parsing::command(input)
     }
 }
 
-#[allow(dead_code)]
 mod parsing {
-    use super::Command2 as Command;
     use super::*;
-    use nom::{
-        branch::alt,
-        bytes::complete::tag_no_case,
-        bytes::complete::{tag, take_while, take_while1},
-        error::{ErrorKind, ParseError},
-        sequence::tuple,
-        Err::Error as NomError,
-        IResult,
+    use nom::bytes::complete::{
+        tag_no_case,
+        tag,
+        take_while,
+        take_while1,
     };
-    use std::cell::Cell;
+    use std::cell::Cell; // todo remove this
 
     #[derive(Debug)]
     pub enum Error<'a> {
@@ -451,7 +347,7 @@ mod parsing {
         }
     }
 
-    fn reverse_path(input: &str) -> Result<(&str, Option<PATH>), Error> {
+    fn reverse_path(input: &str) -> Result<(&str, Option<Path>), Error> {
         if let Ok((i, _p)) = tag::<_, _, ()>("<>")(input) {
             return Ok((i, None));
         }
@@ -491,7 +387,7 @@ mod parsing {
         Ok((input, domains))
     }
 
-    fn path(input: &str) -> Result<(&str, PATH), Error> {
+    fn path(input: &str) -> Result<(&str, Path), Error> {
         let (mut input, _begin) = tag::<_, _, ()>("<")(input)
             .map_err(|_| Error::Known("Expected '<' at the beginning of a path."))?;
         let source_route = match source_route(input) {
@@ -505,7 +401,7 @@ mod parsing {
         let (input, _end) = tag::<_, _, ()>(">")(input)
             .map_err(|_| Error::Known("Expected '>' at the end of a path."))?;
 
-        Ok((input, (source_route, mailbox)))
+        Ok((input, Path(source_route, mailbox)))
     }
 
     fn parameters(input: &str) -> Result<(&str, Vec<PARAM>), Error> {
@@ -759,7 +655,7 @@ mod parsing {
         Ok(Command::Noop(parameter))
     }
 
-    fn command(input: &str) -> Result<Command, Error> {
+    pub fn command(input: &str) -> Result<Command, Error> {
         if let Ok(command) = ehlo(input) {
             return Ok(command);
         } else if let Ok(command) = start_tls(input) {
@@ -876,7 +772,7 @@ mod parsing {
             assert_eq!(
                 from("MAIL FROM:<mubelotix@gmail.com>\r\n").unwrap(),
                 Command::From(
-                    Some((
+                    Some(Path(
                         vec![],
                         (
                             LocalPart::DotString("mubelotix"),
@@ -890,7 +786,7 @@ mod parsing {
             assert_eq!(
                 from("MAIL FROM:<@example.com:mubelotix@gmail.com>\r\n").unwrap(),
                 Command::From(
-                    Some((
+                    Some(Path(
                         vec!["example.com"],
                         (
                             LocalPart::DotString("mubelotix"),
@@ -904,7 +800,7 @@ mod parsing {
             assert_eq!(
                 from("MAIL FROM:<mubelotix@gmail.com> AUTH=<>\r\n").unwrap(),
                 Command::From(
-                    Some((
+                    Some(Path(
                         vec![],
                         (
                             LocalPart::DotString("mubelotix"),
@@ -918,7 +814,7 @@ mod parsing {
             assert_eq!(
                 from("MAIL FROM:<mubelotix@gmail.com> AUTH=<> anonymous\r\n").unwrap(),
                 Command::From(
-                    Some((
+                    Some(Path(
                         vec![],
                         (
                             LocalPart::DotString("mubelotix"),
@@ -935,7 +831,7 @@ mod parsing {
             assert_eq!(
                 to("RCPT TO:<@jkl.org:userc@d.bar.org>\r\n").unwrap(),
                 Command::To(
-                    Recipient::Path((
+                    Recipient::Path(Path(
                         vec!["jkl.org"],
                         (
                             LocalPart::DotString("userc"),
@@ -1011,7 +907,7 @@ mod parsing {
             assert_eq!(reverse_path("<>").unwrap().1, None);
             assert_eq!(
                 reverse_path("<mubelotix@mubelotix.dev>").unwrap().1,
-                Some((
+                Some(Path(
                     vec![],
                     (
                         LocalPart::DotString("mubelotix"),
@@ -1023,7 +919,7 @@ mod parsing {
                 reverse_path("<@example.com,@gmail.com:mubelotix@mubelotix.dev>")
                     .unwrap()
                     .1,
-                Some((
+                Some(Path(
                     vec!["example.com", "gmail.com"],
                     (
                         LocalPart::DotString("mubelotix"),

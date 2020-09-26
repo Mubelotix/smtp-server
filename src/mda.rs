@@ -1,157 +1,121 @@
 use crate::{
-    address::EmailAddress, commands::Command, mta::transfert_mail, replies::Reply,
-    tcp_stream::Stream,
+    address::EmailAddress, commands::*, /*mta::transfert_mail, */replies::Reply,
 };
 use email::MimeMessage;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use native_tls::TlsAcceptor;
-use std::{io::prelude::*, net::TcpStream, sync::Arc};
+use tokio::prelude::*;
+use tokio::net::{TcpListener, TcpStream};
+use bytes::BytesMut;
+use std::sync::Arc;
 
-pub fn handle_client(
-    stream: TcpStream,
-    tls_acceptor: Option<Arc<TlsAcceptor>>,
-    domain: &str,
-) -> std::io::Result<()> {
-    let mut stream = Stream::Unencryted(stream);
-    stream.send_reply(
-        Reply::ServiceReady().with_message(format!("{} Rust SMTP Server v1.0", domain)),
-    )?;
+#[derive(Debug, PartialEq)]
+pub enum OwnedServerIdentity {
+    Domain(String),
+    Ipv4(String),
+}
 
-    assert!(tls_acceptor.is_some());
+#[derive(Debug, PartialEq)]
+pub enum OwnedRecipient {
+    Postmaster(String),
+    LocalPostmaster,
+    Path(String, OwnedServerIdentity)
+}
 
-    let mut from: Option<EmailAddress> = None;
-    let mut to = Vec::new();
-    let mut body: Option<MimeMessage> = None;
+impl<'a> From<Recipient<'a>> for OwnedRecipient {
+    fn from(r: Recipient) -> Self {
+        match r {
+            Recipient::Postmaster(d) => OwnedRecipient::Postmaster(d.to_string()),
+            Recipient::LocalPostmaster => OwnedRecipient::LocalPostmaster,
+            Recipient::Path(Path(_sr,(lp, si))) => {
+                let lp = match lp {
+                    LocalPart::DotString(ds) => ds.to_string(),
+                    LocalPart::QuotedString(qs) => qs,
+                };
+                let si = match si {
+                    ServerIdentity::Domain(d) => OwnedServerIdentity::Domain(d.to_string()),
+                    ServerIdentity::Ipv4(ip) => OwnedServerIdentity::Ipv4(ip.to_string()),
+                };
+                OwnedRecipient::Path(lp, si)
+            },
+        }
+    }
+}
+
+pub async fn handle_client(mut socket: TcpStream, domain: Arc<String>) {
+    println!("GOT: {:?}", socket);
+
+    let mut reverse_path: Option<(LocalPart, ServerIdentity)> = None;
+    let mut forward_path: Vec<OwnedRecipient> = Vec::new();
 
     loop {
-        let command = match stream.read_command()? {
-            Ok(command) => command,
-            Err(e) => {
-                stream.send_reply(
-                    Reply::SyntaxError().with_message(String::from("That command was strange!")),
-                )?;
-                warn!("Failed to parse command: {:?}", e);
-                continue;
-            }
-        };
+        let mut b = [0; 1024];
 
+        // The `read` method is defined by this trait.
+        let n = socket.read(&mut b).await.unwrap();
+        let s = std::str::from_utf8(&b[..n]).unwrap();
+        
+        println!("{:?}", s);
+        let command = Command::from_str(s).unwrap();
+        println!("{:?}", command);
         match command {
-            Command::Helo(_) => {
-                stream.send_reply(Reply::Ok().with_message(domain.to_string()))?;
-            }
             Command::Ehlo(peer_domain) => {
-                stream.send_reply(Reply::Ok().with_message(format!(
-                    "{} greets {}\nAUTH PLAIN{}",
+                // reset data
+                reverse_path = None;
+                forward_path.clear();
+
+                // send reply
+                socket.write_all(Reply::Ok().with_message(format!(
+                    "{} greets {}",
                     domain,
-                    peer_domain,
-                    if tls_acceptor.is_some() {
-                        "\nSTARTTLS"
-                    } else {
-                        ""
-                    }
-                )))?;
-            }
-            Command::Recipient(address) => {
-                if address.domain == domain {
-                    to.push(address);
+                    peer_domain
+                )).to_string().as_bytes()).await.unwrap();
+            },
+            Command::Helo(peer_domain) => {
+                // reset data
+                reverse_path = None;
+                //forward_path.clear();
 
-                    stream.send_reply(Reply::Ok())?;
-                } else if let Some(from) = &from {
-                    if
-                    /*from.domain == domain ||*/
-                    true {
-                        to.push(address);
+                // send reply
+                socket.write_all(Reply::Ok().with_message(format!(
+                    "{} greets {}",
+                    domain,
+                    peer_domain
+                )).to_string().as_bytes()).await.unwrap();
+            },
+            Command::From(path, _parameters) => {
+                if let Some(path) = path {
+                    // TODO verify identity
+                    reverse_path = Some(path.1);
+                    //forward_path.clear();
 
-                        stream.send_reply(Reply::Ok())?;
-                    } else {
-                        stream.send_reply(Reply::UnableToAccomodateParameters().with_message(
-                            format!(
-                                "The address {} is not hosted on this domain ({})",
-                                address, domain
-                            ),
-                        ))?;
-                    }
-                }
-            }
-            Command::Mail(adress) => {
-                from = Some(adress);
-                to = Vec::new();
-                body = None;
-
-                stream.send_reply(Reply::Ok())?;
-            }
-            Command::Reset => {
-                from = None;
-                to = Vec::new();
-                body = None;
-
-                stream.send_reply(Reply::Ok())?;
-            }
-            Command::Data => {
-                stream.send_reply(Reply::StartMailInput().with_message(String::from("")))?;
-
-                let mut mail: Vec<u8> = Vec::new();
-                let mut buffer = [0; 512];
-                while !mail.ends_with(&[b'\r', b'\n', b'.', b'\r', b'\n']) {
-                    let read = stream.read(&mut buffer)?;
-                    mail.append(&mut buffer[..read].to_vec());
-                }
-                mail.remove(mail.len() - 1);
-                mail.remove(mail.len() - 1);
-                mail.remove(mail.len() - 1);
-                if let Ok(mut file) = std::fs::File::create("mail.txt") {
-                    file.write_all(&mail)?;
-                }
-                let mail = String::from_utf8(mail).unwrap();
-                let mail = MimeMessage::parse(&mail).unwrap();
-                info!("Received mail: {:#?}", mail);
-
-                body = Some(mail);
-
-                stream.send_reply(Reply::Ok())?;
-
-                if let (Some(to), Some(from)) = (to.get(0), &from) {
-                    if to.domain != domain && from.domain == domain {
-                        transfert_mail(to, from, body.unwrap(), domain);
-                    }
-                }
-            }
-            #[allow(unused_must_use)]
-            Command::Quit => {
-                stream.send_reply(Reply::Ok());
-                stream.shutdown();
-                return Ok(());
-            }
-            Command::StartTls => {
-                if let Some(tls_acceptor) = &tls_acceptor {
-                    stream.send_reply(Reply::ServiceReady())?;
-                    if let Stream::Unencryted(unencrypted_stream) = stream {
-                        if let Ok(encrypted_stream) = tls_acceptor.accept(unencrypted_stream) {
-                            stream = Stream::Encrypted(encrypted_stream);
-                            info!("TLS enabled");
-                        } else {
-                            warn!("Failed to enable TLS");
-                            return Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe));
-                        }
-                    }
+                    socket.write_all(Reply::Ok().with_message(format!(
+                        "user recognized"
+                    )).to_string().as_bytes()).await.unwrap();
                 } else {
-                    stream.send_reply(
-                        Reply::ActionNotTaken()
-                            .with_message(String::from("TLS can't be activated")),
-                    )?;
+                    socket.write_all(Reply::UserNotLocal().with_message(format!(
+                        "please specify an existing user"
+                    )).to_string().as_bytes()).await.unwrap();
                 }
             }
-            Command::Auth(data) => {
-                debug!("{:?}", data.as_bytes());
-                let _written = stream.write(b"235 Authentication successful\r\n")?;
-            }
-            Command::Noop => {
-                stream.send_reply(Reply::Ok())?;
+            Command::To(recipient, _parameters) => {
+                let recipient = recipient.into();
+                if !forward_path.contains(&recipient) {
+                    forward_path.push(recipient);
+
+                    socket.write_all(Reply::Ok().with_message(format!(
+                        "1 recipient added, {} recipients in total", forward_path.len()
+                    )).to_string().as_bytes()).await.unwrap();
+                } else {
+                    socket.write_all(Reply::Ok().with_message(format!(
+                        "recipient already added, {} recipients in total", forward_path.len()
+                    )).to_string().as_bytes()).await.unwrap();
+                }
             }
             _ => {
-                stream.send_reply(Reply::CommandNotImplemented())?;
+                socket.write_all(Reply::CommandNotImplemented().to_string().as_bytes()).await.unwrap();
             }
         }
     }
+    
 }

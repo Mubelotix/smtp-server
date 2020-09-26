@@ -4,20 +4,23 @@ use log::{debug, error, info, trace, warn};
 use native_tls::{Identity, TlsAcceptor};
 use std::fs::File;
 use std::io::{prelude::*, ErrorKind};
-use std::net::TcpListener;
 use std::sync::Arc;
 
 pub mod address;
-/// TODO support 8-bit https://tools.ietf.org/html/rfc1652
 pub mod commands;
 pub mod mda;
 pub mod mta;
 pub mod replies;
-pub mod tcp_stream;
 
 use clap::clap_app;
+use mda::handle_client;
 
-fn main() -> std::io::Result<()> {
+use tokio::prelude::*;
+use tokio::net::{TcpListener, TcpStream};
+use bytes::BytesMut;
+
+#[tokio::main]
+async fn main() {
     let matches = clap_app!(myapp =>
         (version: "1.1")
         (author: "Mubelotix <mubelotix@gmail.com>")
@@ -50,7 +53,7 @@ fn main() -> std::io::Result<()> {
     } else {
         None
     };
-    let domain = matches.value_of("DOMAIN").unwrap();
+    let domain = Arc::new(matches.value_of("DOMAIN").unwrap().to_string());
 
     info!(
         "Launching SMTP server on port {}. TLS is {}.",
@@ -62,29 +65,13 @@ fn main() -> std::io::Result<()> {
         }
     );
 
-    let listener = match TcpListener::bind(format!("0.0.0.0:{}", port)) {
-        Ok(listener) => listener,
-        Err(e) if e.kind() == ErrorKind::PermissionDenied => {
-            error!("The port {} requires sudo power.", port);
-            return Err(e);
-        }
-        Err(e) => return Err(e),
-    };
+    let mut listener = TcpListener::bind(&format!("0.0.0.0:{}", port)).await.unwrap();
 
-    // accept connections and process them serially
-    for stream in listener.incoming().filter(|s| s.is_ok()) {
-        let stream = stream.unwrap(); // it can only be ok thanks to the filter above
-
-        if let Ok(ip) = stream.peer_addr() {
-            debug!("New client (ip: {})", ip);
-        } else {
-            debug!("New client");
-        }
-
-        debug!(
-            "Connection closed. Result: {:?}",
-            mda::handle_client(stream, tls_acceptor.clone(), domain)
-        );
+    loop {
+        let (socket, _) = listener.accept().await.unwrap();
+        let domain = Arc::clone(&domain);
+        tokio::spawn(async move {
+            handle_client(socket, domain).await;
+        });
     }
-    Ok(())
 }
