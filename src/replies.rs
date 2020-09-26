@@ -155,9 +155,9 @@ impl Reply {
         }
     }
 
-    pub fn MailboxNameError() -> Reply {
+    pub fn MailboxNotCorrect() -> Reply {
         Reply {
-            reply_type: ReplyType::MailboxNameError,
+            reply_type: ReplyType::MailboxNotCorrect,
             message: String::from("undefined"),
         }
     }
@@ -206,7 +206,7 @@ pub enum ReplyType {
     CommandNotImplemented,
     BadSequenceOfCommands,
     CommandParameterNotImplemented,
-    MailboxNameError,
+    MailboxNotCorrect,
     TransactionFailed,
     Unknown,
 }
@@ -235,7 +235,7 @@ impl Into<usize> for ReplyType {
             ReplyType::ActionNotTaken => 550,
             ReplyType::UserNotLocal => 551,
             ReplyType::MailActionAborted => 552,
-            ReplyType::MailboxNameError => 553,
+            ReplyType::MailboxNotCorrect => 553,
             ReplyType::TransactionFailed => 554,
             ReplyType::Unknown => 600,
         }
@@ -266,7 +266,7 @@ impl From<usize> for ReplyType {
             550 => ReplyType::ActionNotTaken,
             551 => ReplyType::UserNotLocal,
             552 => ReplyType::MailActionAborted,
-            553 => ReplyType::MailboxNameError,
+            553 => ReplyType::MailboxNotCorrect,
             554 => ReplyType::TransactionFailed,
             code => {
                 warn!("Unknown code \"{}\".", code);

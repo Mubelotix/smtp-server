@@ -39,6 +39,15 @@ pub enum SmtpString<'a> {
     QuotedString(String),
 }
 
+impl<'a> SmtpString<'a> {
+    pub fn as_str(&self) -> &str {
+        match self {
+            SmtpString::Atom(s) => s,
+            SmtpString::QuotedString(ref s) => s
+        }
+    }
+}
+
 impl<'a> std::fmt::Display for SmtpString<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

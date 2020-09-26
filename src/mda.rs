@@ -42,7 +42,9 @@ impl<'a> From<Recipient<'a>> for OwnedRecipient {
     }
 }
 
-pub async fn handle_client(mut socket: TcpStream, domain: Arc<String>) {
+pub async fn handle_client<F, F2>(mut socket: TcpStream, domain: Arc<String>, mut verify_user: F, mut get_mailing_list: F2) where
+    F: FnMut(&str) -> bool,
+    F2: FnMut(&str) -> Option<Vec<String>> {
     println!("GOT: {:?}", socket);
 
     let mut reverse_path: Option<(LocalPart, ServerIdentity)> = None;
@@ -74,7 +76,7 @@ pub async fn handle_client(mut socket: TcpStream, domain: Arc<String>) {
             Command::Helo(peer_domain) => {
                 // reset data
                 reverse_path = None;
-                //forward_path.clear();
+                forward_path.clear();
 
                 // send reply
                 socket.write_all(Reply::Ok().with_message(format!(
@@ -111,9 +113,78 @@ pub async fn handle_client(mut socket: TcpStream, domain: Arc<String>) {
                         "recipient already added, {} recipients in total", forward_path.len()
                     )).to_string().as_bytes()).await.unwrap();
                 }
+            },
+            Command::Reset => {
+                forward_path.clear();
+                reverse_path = None;
+
+                socket.write_all(Reply::Ok().with_message(format!(
+                    "OK"
+                )).to_string().as_bytes()).await.unwrap();
             }
-            _ => {
-                socket.write_all(Reply::CommandNotImplemented().to_string().as_bytes()).await.unwrap();
+            Command::Verify(user) => {
+                if verify_user(user.as_str()) {
+                    socket.write_all(Reply::Ok().with_message(format!(
+                        "User recognized"
+                    )).to_string().as_bytes()).await.unwrap();
+                } else {
+                    socket.write_all(Reply::MailboxNotCorrect().with_message(format!(
+                        "User Ambiguous"
+                    )).to_string().as_bytes()).await.unwrap();
+                }
+            }
+            Command::Expand(list_name) => {
+                if let Some(mailing_list) = get_mailing_list(list_name.as_str()) {
+                    socket.write_all(Reply::Ok().with_message(format!(
+                        "{}", mailing_list.join("\n")
+                    )).to_string().as_bytes()).await.unwrap();
+                } else {
+                    socket.write_all(Reply::ActionNotTaken().with_message(format!(
+                        "There is no mailing list with this name"
+                    )).to_string().as_bytes()).await.unwrap();
+                }
+            }
+            Command::Help(e) => {
+                match e {
+                    Some(e) => socket.write_all(Reply::Ok().with_message(format!(
+                        "Thanks for using this SMTP server! You asked help about {:?}", e.as_str()
+                    )).to_string().as_bytes()).await.unwrap(),
+                    None => socket.write_all(Reply::Ok().with_message(format!(
+                        "Thanks for using this SMTP server!"
+                    )).to_string().as_bytes()).await.unwrap()
+                }
+            }
+            Command::Noop(e) => {
+                match e {
+                    Some(e) => socket.write_all(Reply::Ok().with_message(format!(
+                        "It is a very sad thing that nowadays there is so little useless information.\nThank you for your {} useless bytes.", e.as_str().len(),
+                    )).to_string().as_bytes()).await.unwrap(),
+                    None => socket.write_all(Reply::Ok().with_message(format!(
+                        "It is better of course to do useless things than to do nothing."
+                    )).to_string().as_bytes()).await.unwrap()
+                }
+            }
+            Command::Quit => {
+                socket.write_all(Reply::ServiceClosingTransmissionChannel().with_message(format!(
+                    "Goodbye!",
+                )).to_string().as_bytes()).await.unwrap();
+                socket.shutdown(std::net::Shutdown::Both).unwrap();
+            }
+            Command::StartTLS => socket.write_all(Reply::CommandNotImplemented().to_string().as_bytes()).await.unwrap(),
+            Command::Data => {
+                socket.write_all(Reply::StartMailInput().with_message(format!(
+                    "Go ahead!",
+                )).to_string().as_bytes()).await.unwrap();
+                let mut b = BytesMut::new();
+                loop {
+                    let n = socket.read_buf(&mut b).await.unwrap();
+                    if b.ends_with(b"\r\n.\r\n") {
+                        break;
+                    }
+                }
+                b.truncate(b.len() - 3);
+                
+                println!("{}", std::str::from_utf8(&b).unwrap());
             }
         }
     }

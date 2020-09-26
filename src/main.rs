@@ -71,7 +71,13 @@ async fn main() {
         let (socket, _) = listener.accept().await.unwrap();
         let domain = Arc::clone(&domain);
         tokio::spawn(async move {
-            handle_client(socket, domain).await;
+            handle_client(socket, domain, |_s| true, |name| {
+                if name == "administration" {
+                    Some(vec!["Mubelotix <mubelotix@mubelotix.dev>".to_string(), "Other <other@mubelotix.dev>".to_string()])
+                } else {
+                    None
+                }
+            }).await;
         });
     }
 }
