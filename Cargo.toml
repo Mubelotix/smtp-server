@@ -7,8 +7,6 @@ edition = "2018"
 [dependencies]
 log = "0.4"
 env_logger = "0.7"
-string-tools = "0.1"
-native-tls = "0.2"
 clap = "2.33"
 trust-dns-resolver = "0.19"
 nom = "5.1"
