@@ -1,9 +1,6 @@
 #![allow(clippy::cognitive_complexity)]
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use native_tls::{Identity, TlsAcceptor};
-use std::fs::File;
-use std::io::prelude::*;
 use std::sync::Arc;
 
 pub mod commands;
@@ -37,8 +34,8 @@ async fn main() {
         .unwrap_or("25")
         .parse()
         .unwrap_or(25);
-    let tls_acceptor: Option<Arc<TlsAcceptor>> = if matches.occurrences_of("TLS") > 0 {
-        let mut file = File::open(matches.value_of("CERT").unwrap()).unwrap();
+    let tls_acceptor: Option<()> = if matches.occurrences_of("TLS") > 0 {
+        /*let mut file = File::open(matches.value_of("CERT").unwrap()).unwrap();
         let mut identity = vec![];
         file.read_to_end(&mut identity).unwrap();
         let identity =
@@ -46,7 +43,8 @@ async fn main() {
         let acceptor = TlsAcceptor::new(identity).unwrap();
         let acceptor = Arc::new(acceptor);
 
-        Some(acceptor)
+        Some(acceptor)*/
+        Some(())
     } else {
         None
     };

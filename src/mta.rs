@@ -4,8 +4,6 @@ use log::{debug, error, info, trace, warn};
 pub enum MTAError {
     IOError(std::io::Error),
     DnsError(trust_dns_resolver::error::ResolveError),
-    TlsError(native_tls::Error),
-    TlsHandshakeError(native_tls::HandshakeError<std::net::TcpStream>),
     NoMxRecord,
     DeadMxRecord,
     ServiceNotReady,
@@ -20,18 +18,6 @@ impl From<std::io::Error> for MTAError {
 impl From<trust_dns_resolver::error::ResolveError> for MTAError {
     fn from(error: trust_dns_resolver::error::ResolveError) -> MTAError {
         MTAError::DnsError(error)
-    }
-}
-
-impl From<native_tls::Error> for MTAError {
-    fn from(error: native_tls::Error) -> MTAError {
-        MTAError::TlsError(error)
-    }
-}
-
-impl From<native_tls::HandshakeError<std::net::TcpStream>> for MTAError {
-    fn from(error: native_tls::HandshakeError<std::net::TcpStream>) -> MTAError {
-        MTAError::TlsHandshakeError(error)
     }
 }
 

@@ -2,184 +2,184 @@
 use log::{debug, error, info, trace, warn};
 
 #[derive(Debug)]
-pub struct Reply {
+pub struct Reply<T = String> where T: std::fmt::Display {
     pub reply_type: ReplyType,
-    pub message: String,
+    pub message: Option<T>,
 }
 
 #[allow(non_snake_case)]
-impl Reply {
-    pub fn Ok() -> Reply {
+impl<T> Reply<T> where T: std::fmt::Display {
+    pub fn Ok() -> Reply<T> {
         Reply {
             reply_type: ReplyType::Ok,
-            message: String::from("OK"),
+            message: None,
         }
     }
 
-    pub fn SystemStatus() -> Reply {
+    pub fn SystemStatus() -> Reply<T> {
         Reply {
             reply_type: ReplyType::SystemStatus,
-            message: String::from("undefined"),
+            message: None,
         }
     }
 
-    pub fn HelpMessage() -> Reply {
+    pub fn HelpMessage() -> Reply<T> {
         Reply {
             reply_type: ReplyType::HelpMessage,
-            message: String::from("undefined"),
+            message: None,
         }
     }
 
-    pub fn ServiceReady() -> Reply {
+    pub fn ServiceReady() -> Reply<T> {
         Reply {
             reply_type: ReplyType::ServiceReady,
-            message: String::from("undefined"),
+            message: None,
         }
     }
 
-    pub fn ServiceClosingTransmissionChannel() -> Reply {
+    pub fn ServiceClosingTransmissionChannel() -> Reply<T> {
         Reply {
             reply_type: ReplyType::ServiceClosingTransmissionChannel,
-            message: String::from("undefined"),
+            message: None,
         }
     }
 
-    pub fn UserNotLocalHandled() -> Reply {
+    pub fn UserNotLocalHandled() -> Reply<T> {
         Reply {
             reply_type: ReplyType::UserNotLocalHandled,
-            message: String::from("undefined"),
+            message: None,
         }
     }
 
-    pub fn UserNotLocal() -> Reply {
+    pub fn UserNotLocal() -> Reply<T> {
         Reply {
             reply_type: ReplyType::UserNotLocal,
-            message: String::from("undefined"),
+            message: None,
         }
     }
 
-    pub fn CannotVerifyUser() -> Reply {
+    pub fn CannotVerifyUser() -> Reply<T> {
         Reply {
             reply_type: ReplyType::CannotVerifyUser,
-            message: String::from("undefined"),
+            message: None,
         }
     }
 
-    pub fn StartMailInput() -> Reply {
+    pub fn StartMailInput() -> Reply<T> {
         Reply {
             reply_type: ReplyType::StartMailInput,
-            message: String::from("undefined"),
+            message: None,
         }
     }
 
-    pub fn ServiceUnavailable() -> Reply {
+    pub fn ServiceUnavailable() -> Reply<T> {
         Reply {
             reply_type: ReplyType::ServiceUnavailable,
-            message: String::from("undefined"),
+            message: None,
         }
     }
 
-    pub fn MailActionNotTaken() -> Reply {
+    pub fn MailActionNotTaken() -> Reply<T> {
         Reply {
             reply_type: ReplyType::MailActionNotTaken,
-            message: String::from("undefined"),
+            message: None,
         }
     }
 
-    pub fn ActionNotTaken() -> Reply {
+    pub fn ActionNotTaken() -> Reply<T> {
         Reply {
             reply_type: ReplyType::ActionNotTaken,
-            message: String::from("undefined"),
+            message: None,
         }
     }
 
-    pub fn MailActionAborted() -> Reply {
+    pub fn MailActionAborted() -> Reply<T> {
         Reply {
             reply_type: ReplyType::MailActionAborted,
-            message: String::from("undefined"),
+            message: None,
         }
     }
 
-    pub fn ActionAborted() -> Reply {
+    pub fn ActionAborted() -> Reply<T> {
         Reply {
             reply_type: ReplyType::ActionAborted,
-            message: String::from("undefined"),
+            message: None,
         }
     }
 
-    pub fn InsufficientStorage() -> Reply {
+    pub fn InsufficientStorage() -> Reply<T> {
         Reply {
             reply_type: ReplyType::InsufficientStorage,
-            message: String::from("undefined"),
+            message: None,
         }
     }
 
-    pub fn UnableToAccomodateParameters() -> Reply {
+    pub fn UnableToAccomodateParameters() -> Reply<T> {
         Reply {
             reply_type: ReplyType::UnableToAccomodateParameters,
-            message: String::from("undefined"),
+            message: None,
         }
     }
 
-    pub fn SyntaxError() -> Reply {
+    pub fn SyntaxError() -> Reply<T> {
         Reply {
             reply_type: ReplyType::SyntaxError,
-            message: String::from("undefined"),
+            message: None,
         }
     }
 
-    pub fn SyntaxErrorInParametersOrArguments() -> Reply {
+    pub fn SyntaxErrorInParametersOrArguments() -> Reply<T> {
         Reply {
             reply_type: ReplyType::SyntaxErrorInParametersOrArguments,
-            message: String::from("undefined"),
+            message: None,
         }
     }
 
-    pub fn CommandNotImplemented() -> Reply {
+    pub fn CommandNotImplemented() -> Reply<T> {
         Reply {
             reply_type: ReplyType::CommandNotImplemented,
-            message: String::from("undefined"),
+            message: None,
         }
     }
 
-    pub fn BadSequenceOfCommands() -> Reply {
+    pub fn BadSequenceOfCommands() -> Reply<T> {
         Reply {
             reply_type: ReplyType::BadSequenceOfCommands,
-            message: String::from("undefined"),
+            message: None,
         }
     }
 
-    pub fn CommandParameterNotImplemented() -> Reply {
+    pub fn CommandParameterNotImplemented() -> Reply<T> {
         Reply {
             reply_type: ReplyType::CommandParameterNotImplemented,
-            message: String::from("undefined"),
+            message: None,
         }
     }
 
-    pub fn MailboxNotCorrect() -> Reply {
+    pub fn MailboxNotCorrect() -> Reply<T> {
         Reply {
             reply_type: ReplyType::MailboxNotCorrect,
-            message: String::from("undefined"),
+            message: None,
         }
     }
 
-    pub fn TransactionFailed() -> Reply {
+    pub fn TransactionFailed() -> Reply<T> {
         Reply {
             reply_type: ReplyType::TransactionFailed,
-            message: String::from("undefined"),
+            message: None,
         }
     }
 
-    pub fn with_message(self, message: String) -> Reply {
-        Reply { message, ..self }
+    pub fn with_message(self, message: T) -> Reply<T> {
+        Reply { message: Some(message), ..self }
     }
 }
 
-impl From<(usize, String)> for Reply {
-    fn from((code, message): (usize, String)) -> Reply {
+impl<T> From<(usize, T)> for Reply<T> where T: std::fmt::Display {
+    fn from((code, message): (usize, T)) -> Reply<T> {
         Reply {
             reply_type: ReplyType::from(code),
-            message,
+            message: Some(message),
         }
     }
 }
@@ -277,16 +277,19 @@ impl From<usize> for ReplyType {
     }
 }
 
-impl ToString for Reply {
+impl<T> ToString for Reply<T> where T: std::fmt::Display {
     fn to_string(&self) -> String {
-        process_message(self.reply_type.clone().into(), &self.message)
+        match self.message {
+            Some(ref m) => process_message(self.reply_type.clone().into(), &m.to_string()),
+            None => process_message(self.reply_type.clone().into(), "undefined"),
+        }
     }
 }
 
-impl std::str::FromStr for Reply {
+impl std::str::FromStr for Reply<String> {
     type Err = &'static str;
 
-    fn from_str(message: &str) -> Result<Reply, Self::Err> {
+    fn from_str(message: &str) -> Result<Reply<String>, Self::Err> {
         let code = match message[..3].parse::<usize>() {
             Ok(code) => code,
             Err(_e) => return Err("Missing reply code"),

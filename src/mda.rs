@@ -183,7 +183,7 @@ pub async fn handle_client<F, F2, F3>(mut socket: TcpStream, domain: Arc<String>
                 socket.shutdown(std::net::Shutdown::Both).unwrap();
                 break;
             }
-            Command::StartTLS => socket.write_all(Reply::CommandNotImplemented().to_string().as_bytes()).await.unwrap(),
+            Command::StartTLS => socket.write_all(Reply::<String>::CommandNotImplemented().to_string().as_bytes()).await.unwrap(),
             Command::Data => {
                 socket.write_all(Reply::StartMailInput().with_message(format!(
                     "Go ahead!",
