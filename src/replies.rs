@@ -170,6 +170,20 @@ impl<T> Reply<T> where T: std::fmt::Display {
         }
     }
 
+    pub fn TlsRequired() -> Reply<T> {
+        Reply {
+            reply_type: ReplyType::TlsRequired,
+            message: None,
+        }
+    }
+
+    pub fn TlsUnavailable() -> Reply<T> {
+        Reply {
+            reply_type: ReplyType::TlsUnavailable,
+            message: None,
+        }
+    }
+
     pub fn with_message(self, message: T) -> Reply<T> {
         Reply { message: Some(message), ..self }
     }
@@ -197,10 +211,12 @@ pub enum ReplyType {
     StartMailInput,
     ServiceUnavailable,
     MailActionNotTaken,
+    TlsRequired,
     ActionNotTaken,
     MailActionAborted,
     ActionAborted,
     InsufficientStorage,
+    TlsUnavailable,
     UnableToAccomodateParameters,
     SyntaxError,
     SyntaxErrorInParametersOrArguments,
@@ -227,18 +243,20 @@ impl Into<usize> for ReplyType {
             ReplyType::MailActionNotTaken => 450,
             ReplyType::ActionAborted => 451,
             ReplyType::InsufficientStorage => 452,
+            ReplyType::TlsUnavailable => 454,
             ReplyType::UnableToAccomodateParameters => 455,
             ReplyType::SyntaxError => 500,
             ReplyType::SyntaxErrorInParametersOrArguments => 501,
             ReplyType::CommandNotImplemented => 502,
             ReplyType::BadSequenceOfCommands => 503,
             ReplyType::CommandParameterNotImplemented => 504,
+            ReplyType::TlsRequired => 530,
             ReplyType::ActionNotTaken => 550,
             ReplyType::UserNotLocal => 551,
             ReplyType::MailActionAborted => 552,
             ReplyType::MailboxNotCorrect => 553,
             ReplyType::TransactionFailed => 554,
-            ReplyType::Unknown => 600,
+            ReplyType::Unknown => 500,
         }
     }
 }
@@ -258,12 +276,14 @@ impl From<usize> for ReplyType {
             450 => ReplyType::MailActionNotTaken,
             451 => ReplyType::ActionAborted,
             452 => ReplyType::InsufficientStorage,
+            454 => ReplyType::TlsUnavailable,
             455 => ReplyType::UnableToAccomodateParameters,
             500 => ReplyType::SyntaxError,
             501 => ReplyType::SyntaxErrorInParametersOrArguments,
             502 => ReplyType::CommandNotImplemented,
             503 => ReplyType::BadSequenceOfCommands,
             504 => ReplyType::CommandParameterNotImplemented,
+            530 => ReplyType::TlsRequired,
             550 => ReplyType::ActionNotTaken,
             551 => ReplyType::UserNotLocal,
             552 => ReplyType::MailActionAborted,

@@ -6,6 +6,7 @@ pub struct ConfigBuilder {
     domain: String,
     server_agent: Option<String>,
     tls_acceptor: Option<TlsAcceptor>,
+    tls_required: bool,
 }
 
 impl ConfigBuilder {
@@ -14,6 +15,7 @@ impl ConfigBuilder {
             domain: domain.into(),
             server_agent: None,
             tls_acceptor: None,
+            tls_required: false,
         }
     }
 
@@ -32,12 +34,18 @@ impl ConfigBuilder {
         self
     }
 
+    pub fn force_tls(mut self) -> ConfigBuilder {
+        self.tls_required = true;
+        self
+    }
+
     pub fn build(self) -> Config {
         Config {
             raw_config: Arc::new(RawConfig {
                 domain: self.domain,
                 server_agent: self.server_agent.unwrap_or(String::from("Rust SMTP server")),
-                tls_acceptor: self.tls_acceptor
+                tls_acceptor: self.tls_acceptor,
+                tls_required: self.tls_required,
             })
         }
     }
@@ -48,6 +56,7 @@ struct RawConfig {
     domain: String,
     server_agent: String,
     tls_acceptor: Option<TlsAcceptor>,
+    tls_required: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -68,7 +77,11 @@ impl Config {
         self.raw_config.tls_acceptor.as_ref()
     }
 
-    pub fn tls_enabled(&self) -> bool {
+    pub fn tls_available(&self) -> bool {
         self.raw_config.tls_acceptor.is_some()
+    }
+
+    pub fn tls_required(&self) -> bool {
+        self.raw_config.tls_required
     }
 }

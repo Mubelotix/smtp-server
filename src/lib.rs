@@ -32,7 +32,7 @@ async fn main_test() {
     let config = ConfigBuilder::new("mubelotix.dev").with_server_agent("Rust SMTP server (testing)").with_tls(acceptor).build();
 
     // open socket
-    let mut listener = TcpListener::bind("0.0.0.0:25").await.unwrap();
+    let mut listener = TcpListener::bind("0.0.0.0:50587").await.unwrap();
 
     loop {
         let (socket, _) = listener.accept().await.unwrap();

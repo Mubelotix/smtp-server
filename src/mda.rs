@@ -95,7 +95,7 @@ pub async fn handle_client<F, F2, F3, R, R2, R3>(socket: TokioTcpStream, config:
                     "{} greets {}{}",
                     config.domain(),
                     peer_domain,
-                    if config.tls_enabled() {
+                    if config.tls_available() || config.tls_required() {
                         "\nSTARTTLS"
                     } else {
                         ""
@@ -114,6 +114,44 @@ pub async fn handle_client<F, F2, F3, R, R2, R3>(socket: TokioTcpStream, config:
                     peer_domain
                 ))).await.unwrap();
             },
+            Command::Quit => {
+                socket.send_reply(Reply::ServiceClosingTransmissionChannel().with_message(format!(
+                    "Goodbye!",
+                ))).await.unwrap();
+                socket.shutdown().await.unwrap();
+                break;
+            }
+            Command::StartTLS => {
+                if let Some(tls_acceptor) = config.tls_acceptor() {
+                    socket.send_reply(Reply::ServiceReady().with_message("Let's encrypt!".to_string())).await.unwrap();
+                    socket = match socket.accept(tls_acceptor).await {
+                        Ok(s) => s,
+                        Err(e) => {
+                            error!("Failed handshake with client: {}", e);
+                            break;
+                        }
+                    };
+                    forward_path.clear();
+                    reverse_path = None;
+                } else if config.tls_required() {
+                    socket.send_reply(Reply::TlsUnavailable().with_message("TLS required, but unavailable due to temporary reason".to_string())).await.unwrap();
+                } else {
+                    socket.send_reply(Reply::SyntaxError().with_message("Unrecognized command".to_string())).await.unwrap();
+                }
+            },
+            Command::Noop(e) => {
+                match e {
+                    Some(e) => socket.send_reply(Reply::Ok().with_message(format!(
+                        "It is a very sad thing that nowadays there is so little useless information.\nThank you for your {} useless bytes.", e.as_str().len(),
+                    ))).await.unwrap(),
+                    None => socket.send_reply(Reply::Ok().with_message(format!(
+                        "It is better of course to do useless things than to do nothing."
+                    ))).await.unwrap()
+                }
+            }
+            _ if config.tls_required() && !socket.is_encrypted() => {
+                socket.send_reply(Reply::TlsRequired().with_message("Must issue a STARTTLS command first".to_string())).await.unwrap();
+            }
             Command::From(path, _parameters) => {
                 if let Some(Path(_sr,(lp, si))) = path {
                     // TODO verify identity
@@ -191,37 +229,6 @@ pub async fn handle_client<F, F2, F3, R, R2, R3>(socket: TokioTcpStream, config:
                     ))).await.unwrap()
                 }
             }
-            Command::Noop(e) => {
-                match e {
-                    Some(e) => socket.send_reply(Reply::Ok().with_message(format!(
-                        "It is a very sad thing that nowadays there is so little useless information.\nThank you for your {} useless bytes.", e.as_str().len(),
-                    ))).await.unwrap(),
-                    None => socket.send_reply(Reply::Ok().with_message(format!(
-                        "It is better of course to do useless things than to do nothing."
-                    ))).await.unwrap()
-                }
-            }
-            Command::Quit => {
-                socket.send_reply(Reply::ServiceClosingTransmissionChannel().with_message(format!(
-                    "Goodbye!",
-                ))).await.unwrap();
-                socket.shutdown().await.unwrap();
-                break;
-            }
-            Command::StartTLS => {
-                if let Some(tls_acceptor) = config.tls_acceptor() {
-                    socket.send_reply(Reply::ServiceReady().with_message("Let's encrypt!".to_string())).await.unwrap();
-                    socket = match socket.accept(tls_acceptor).await {
-                        Ok(s) => s,
-                        Err(e) => {
-                            error!("Failed handshake with client: {}", e);
-                            break;
-                        }
-                    }
-                } else {
-                    socket.send_reply(Reply::SyntaxError().with_message("Unrecognized command".to_string())).await.unwrap();
-                }
-            },
             Command::Data => {
                 socket.send_reply(Reply::StartMailInput().with_message(format!(
                     "Go ahead!",

@@ -50,4 +50,8 @@ impl TcpStream {
             TcpStream::Encrypted(s) => Ok(TcpStream::Encrypted(s))
         }
     }
+
+    pub fn is_encrypted(&self) -> bool {
+        matches!(self, TcpStream::Encrypted(_))
+    }
 }
