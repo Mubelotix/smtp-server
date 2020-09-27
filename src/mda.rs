@@ -6,7 +6,7 @@ use log::{debug, error, info, trace, warn};
 use tokio::prelude::*;
 use tokio::net::TcpStream;
 use bytes::BytesMut;
-use std::sync::Arc;
+use crate::config::Config;
 use std::future::Future;
 
 #[derive(Debug, PartialEq)]
@@ -42,7 +42,7 @@ impl<'a> From<Recipient<'a>> for OwnedRecipient {
     }
 }
 
-pub async fn handle_client<F, F2, F3, R, R2, R3>(mut socket: TcpStream, domain: Arc<String>, mut verify_user: F, mut get_mailing_list: F2, mut deliver_mail: F3) where
+pub async fn handle_client<F, F2, F3, R, R2, R3>(mut socket: TcpStream, config: Config, mut verify_user: F, mut get_mailing_list: F2, mut deliver_mail: F3) where
     F: FnMut(&str) -> R,
     R: Future<Output = bool>,
     F2: FnMut(&str) -> R2,
@@ -52,7 +52,7 @@ pub async fn handle_client<F, F2, F3, R, R2, R3>(mut socket: TcpStream, domain: 
     println!("GOT: {:?}", socket);
 
     socket.write_all(Reply::ServiceReady().with_message(format!(
-        "{} Rust SMTP Server v0.1", domain
+        "{} {}: Service ready", config.domain(), config.server_agent()
     )).to_string().as_bytes()).await.unwrap();
 
     let mut reverse_path: Option<(String, OwnedServerIdentity)> = None;
@@ -77,7 +77,7 @@ pub async fn handle_client<F, F2, F3, R, R2, R3>(mut socket: TcpStream, domain: 
                 // send reply
                 socket.write_all(Reply::Ok().with_message(format!(
                     "{} greets {}",
-                    domain,
+                    config.domain(),
                     peer_domain
                 )).to_string().as_bytes()).await.unwrap();
             },
@@ -89,7 +89,7 @@ pub async fn handle_client<F, F2, F3, R, R2, R3>(mut socket: TcpStream, domain: 
                 // send reply
                 socket.write_all(Reply::Ok().with_message(format!(
                     "{} greets {}",
-                    domain,
+                    config.domain(),
                     peer_domain
                 )).to_string().as_bytes()).await.unwrap();
             },
@@ -201,8 +201,6 @@ pub async fn handle_client<F, F2, F3, R, R2, R3>(mut socket: TcpStream, domain: 
                 }
                 b.truncate(b.len() - 3);
                 let mail = std::str::from_utf8(&b).unwrap();
-                
-                println!("{}", std::str::from_utf8(&b).unwrap());
 
                 match deliver_mail(reverse_path.take().unwrap(), forward_path, mail).await {
                     Ok(()) => socket.write_all(Reply::Ok().with_message(format!(

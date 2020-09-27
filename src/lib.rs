@@ -6,29 +6,29 @@ pub mod commands;
 pub mod mda;
 pub mod mta;
 pub mod replies;
+pub mod config;
 
 #[tokio::test]
 async fn main_test() {
     use tokio::net::TcpListener;
     use mda::handle_client;
-    use std::sync::Arc;
+    use crate::config::ConfigBuilder;
 
     env_logger::init();
     let port = 50587;
-    let domain = Arc::new("example.com".to_string());
-
     info!(
         "Launching SMTP server on port {}.",
         port,
     );
 
     let mut listener = TcpListener::bind(&format!("0.0.0.0:{}", port)).await.unwrap();
+    let config = ConfigBuilder::new("mubelotix.dev").with_server_agent("Rust SMTP server (testing)").build();
 
     loop {
         let (socket, _) = listener.accept().await.unwrap();
-        let domain = Arc::clone(&domain);
+        let config = config.clone();
         tokio::spawn(async move {
-            handle_client(socket, domain,  |_s| async {true}, |name| {
+            handle_client(socket, config,  |_s| async {true}, |name| {
                 fn asyncize(d: Option<Vec<String>>) -> impl std::future::Future<Output = Option<Vec<String>>> {
                     async {
                         d
