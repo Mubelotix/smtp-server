@@ -206,7 +206,7 @@ pub async fn handle_client<F, F2, F3, R, R2, R3>(mut socket: TcpStream, domain: 
 
                 match deliver_mail(reverse_path.take().unwrap(), forward_path, mail).await {
                     Ok(()) => socket.write_all(Reply::Ok().with_message(format!(
-                        "Menace 1-5, all bytes are down and the mail is secure.",
+                        "Status confirmed, all bytes are down and the mail is secure.",
                     )).to_string().as_bytes()).await.unwrap(),
                     Err(e) => socket.write_all(Reply::ActionAborted().with_message(format!(
                         "Mail not delivered: {}", e
