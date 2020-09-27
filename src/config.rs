@@ -1,9 +1,11 @@
 use std::sync::Arc;
+use tokio_native_tls::TlsAcceptor;
 
 #[derive(Debug)]
 pub struct ConfigBuilder {
     domain: String,
     server_agent: Option<String>,
+    tls_acceptor: Option<TlsAcceptor>,
 }
 
 impl ConfigBuilder {
@@ -11,6 +13,7 @@ impl ConfigBuilder {
         ConfigBuilder {
             domain: domain.into(),
             server_agent: None,
+            tls_acceptor: None,
         }
     }
 
@@ -24,11 +27,17 @@ impl ConfigBuilder {
         self
     }
 
+    pub fn with_tls<T: Into<TlsAcceptor>>(mut self, tls_acceptor: T) -> ConfigBuilder {
+        self.tls_acceptor = Some(tls_acceptor.into());
+        self
+    }
+
     pub fn build(self) -> Config {
         Config {
             raw_config: Arc::new(RawConfig {
                 domain: self.domain,
-                server_agent: self.server_agent.unwrap_or(String::from("Rust SMTP server"))
+                server_agent: self.server_agent.unwrap_or(String::from("Rust SMTP server")),
+                tls_acceptor: self.tls_acceptor
             })
         }
     }
@@ -38,6 +47,7 @@ impl ConfigBuilder {
 struct RawConfig {
     domain: String,
     server_agent: String,
+    tls_acceptor: Option<TlsAcceptor>,
 }
 
 #[derive(Debug, Clone)]
@@ -52,5 +62,13 @@ impl Config {
 
     pub fn server_agent(&self) -> &str {
         &self.raw_config.server_agent
+    }
+
+    pub fn tls_acceptor(&self) -> Option<&TlsAcceptor> {
+        self.raw_config.tls_acceptor.as_ref()
+    }
+
+    pub fn tls_enabled(&self) -> bool {
+        self.raw_config.tls_acceptor.is_some()
     }
 }
