@@ -1,5 +1,7 @@
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
+use crate::commands::*;
+use trust_dns_resolver::{config::{ResolverConfig, ResolverOpts}, Resolver};
 
 pub enum MTAError {
     IOError(std::io::Error),
@@ -21,40 +23,46 @@ impl From<trust_dns_resolver::error::ResolveError> for MTAError {
     }
 }
 
-/*
 pub fn transfert_mail(
-    to: &EmailAddress,
-    from: &EmailAddress,
-    mail: MimeMessage,
+    recipient: &[LocalPart],
+    recipient_server: ServerIdentity,
+    from: Option<Path>,
+    mail: &str,
     domain: &str,
 ) -> Result<(), MTAError> {
     let resolver = Resolver::new(ResolverConfig::default(), ResolverOpts::default())?;
-    let response = resolver.mx_lookup(&to.domain)?;
+    let mda_address = match recipient_server {
+        ServerIdentity::Domain(domain) => {
+            let response = resolver.mx_lookup(domain)?;
+            // TODO select correct server in the iterator
 
-    // TODO select correct server in the iterator
+            // Get the domain from a MX record
+            let mut mda_domain = match response.iter().next() {
+                Some(record) => record.exchange().to_string(),
+                None => {
+                    warn!("No MX record found for {}", domain);
+                    return Err(MTAError::NoMxRecord);
+                }
+            };
 
-    // Get the domain from a MX record
-    let mut mda_domain = match response.iter().next() {
-        Some(record) => record.exchange().to_string(),
-        None => {
-            warn!("No MX record found for {}", to.domain);
-            return Err(MTAError::NoMxRecord);
+            // Get the ip address from the domain
+            match resolver.lookup_ip(&mda_domain)?.iter().next() {
+                Some(addr) => addr,
+                None => {
+                    warn!(
+                        "Domain {} referenced by MX record has no associated ip address",
+                        &mda_domain
+                    );
+                    return Err(MTAError::DeadMxRecord);
+                }
+            }
+        },
+        ServerIdentity::Ipv4(ip) => {
+            ip.parse().unwrap()
         }
     };
-
-    // Get the ip address from the domain
-    let mda_address = match resolver.lookup_ip(&mda_domain)?.iter().next() {
-        Some(addr) => addr,
-        None => {
-            warn!(
-                "Domain {} referenced by MX record has no associated ip address",
-                mda_domain
-            );
-            return Err(MTAError::DeadMxRecord);
-        }
-    };
-
-    debug!("Connecting to {}.", mda_domain);
+    
+    /*debug!("Connecting to {}.", "[mda_domain]");
     let mut stream = Stream::Unencryted(TcpStream::connect((mda_address, 25))?);
 
     // Get the init message and send Ehlo
@@ -140,8 +148,9 @@ pub fn transfert_mail(
     }
 
     stream.read_reply()?;
-    stream.send_command(Command::Quit)?;
+    stream.send_command(Command::Quit)?;*/
+
+    unimplemented!();
 
     Ok(())
 }
-*/
