@@ -66,13 +66,18 @@ async fn main() {
         let (socket, _) = listener.accept().await.unwrap();
         let domain = Arc::clone(&domain);
         tokio::spawn(async move {
-            handle_client(socket, domain, |_s| true, |name| {
-                if name == "administration" {
-                    Some(vec!["Mubelotix <mubelotix@mubelotix.dev>".to_string(), "Other <other@mubelotix.dev>".to_string()])
-                } else {
-                    None
+            handle_client(socket, domain,  |_s| async {true}, |name| {
+                fn asyncize(d: Option<Vec<String>>) -> impl std::future::Future<Output = Option<Vec<String>>> {
+                    async {
+                        d
+                    }
                 }
-            }, |_from, _to, _mail| {
+
+                match name {
+                    "administration" => return asyncize(Some(vec!["Mubelotix <mubelotix@mubelotix.dev>".to_string()])),
+                    _ => return asyncize(None),
+                }
+            }, |_from, _to, _mail| async {
                 println!("Received a mail!!");
                 Ok(())
             }).await;

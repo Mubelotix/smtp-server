@@ -7,6 +7,7 @@ use tokio::prelude::*;
 use tokio::net::TcpStream;
 use bytes::BytesMut;
 use std::sync::Arc;
+use std::future::Future;
 
 #[derive(Debug, PartialEq)]
 pub enum OwnedServerIdentity {
@@ -41,10 +42,13 @@ impl<'a> From<Recipient<'a>> for OwnedRecipient {
     }
 }
 
-pub async fn handle_client<F, F2, F3>(mut socket: TcpStream, domain: Arc<String>, mut verify_user: F, mut get_mailing_list: F2, mut deliver_mail: F3) where
-    F: FnMut(&str) -> bool,
-    F2: FnMut(&str) -> Option<Vec<String>>,
-    F3: FnMut((String, OwnedServerIdentity), Vec<OwnedRecipient>, &str) -> Result<(), &'static str> {
+pub async fn handle_client<F, F2, F3, R, R2, R3>(mut socket: TcpStream, domain: Arc<String>, mut verify_user: F, mut get_mailing_list: F2, mut deliver_mail: F3) where
+    F: FnMut(&str) -> R,
+    R: Future<Output = bool>,
+    F2: FnMut(&str) -> R2,
+    R2: Future<Output = Option<Vec<String>>>,
+    F3: FnMut((String, OwnedServerIdentity), Vec<OwnedRecipient>, &str) -> R3,
+    R3: Future<Output = Result<(), &'static str>> {
     println!("GOT: {:?}", socket);
 
     socket.write_all(Reply::ServiceReady().with_message(format!(
@@ -135,7 +139,7 @@ pub async fn handle_client<F, F2, F3>(mut socket: TcpStream, domain: Arc<String>
                 )).to_string().as_bytes()).await.unwrap();
             }
             Command::Verify(user) => {
-                if verify_user(user.as_str()) {
+                if verify_user(user.as_str()).await {
                     socket.write_all(Reply::Ok().with_message(format!(
                         "User recognized"
                     )).to_string().as_bytes()).await.unwrap();
@@ -146,7 +150,7 @@ pub async fn handle_client<F, F2, F3>(mut socket: TcpStream, domain: Arc<String>
                 }
             }
             Command::Expand(list_name) => {
-                if let Some(mailing_list) = get_mailing_list(list_name.as_str()) {
+                if let Some(mailing_list) = get_mailing_list(list_name.as_str()).await {
                     socket.write_all(Reply::Ok().with_message(format!(
                         "{}", mailing_list.join("\n")
                     )).to_string().as_bytes()).await.unwrap();
@@ -200,7 +204,7 @@ pub async fn handle_client<F, F2, F3>(mut socket: TcpStream, domain: Arc<String>
                 
                 println!("{}", std::str::from_utf8(&b).unwrap());
 
-                match deliver_mail(reverse_path.take().unwrap(), forward_path, mail) {
+                match deliver_mail(reverse_path.take().unwrap(), forward_path, mail).await {
                     Ok(()) => socket.write_all(Reply::Ok().with_message(format!(
                         "Menace 1-5, all bytes are down and the mail is secure.",
                     )).to_string().as_bytes()).await.unwrap(),
