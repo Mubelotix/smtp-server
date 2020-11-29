@@ -1,13 +1,11 @@
-use crate::{
-    commands::*, /*mta::transfert_mail, */replies::Reply,
-};
+use crate::config::Config;
+use crate::stream::TcpStream;
+use crate::{commands::*, /*mta::transfert_mail, */ replies::Reply};
+use bytes::BytesMut;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use tokio::net::TcpStream as TokioTcpStream;
-use bytes::BytesMut;
-use crate::config::Config;
 use std::future::Future;
-use crate::stream::TcpStream;
+use tokio::net::TcpStream as TokioTcpStream;
 
 #[derive(Debug, PartialEq)]
 pub enum OwnedServerIdentity {
@@ -19,7 +17,7 @@ pub enum OwnedServerIdentity {
 pub enum OwnedRecipient {
     Postmaster(String),
     LocalPostmaster,
-    Path(String, OwnedServerIdentity)
+    Path(String, OwnedServerIdentity),
 }
 
 impl<'a> From<Recipient<'a>> for OwnedRecipient {
@@ -27,7 +25,7 @@ impl<'a> From<Recipient<'a>> for OwnedRecipient {
         match r {
             Recipient::Postmaster(d) => OwnedRecipient::Postmaster(d.to_string()),
             Recipient::LocalPostmaster => OwnedRecipient::LocalPostmaster,
-            Recipient::Path(Path(_sr,(lp, si))) => {
+            Recipient::Path(Path(_sr, (lp, si))) => {
                 let lp = match lp {
                     LocalPart::DotString(ds) => ds.to_string(),
                     LocalPart::QuotedString(qs) => qs,
@@ -37,24 +35,27 @@ impl<'a> From<Recipient<'a>> for OwnedRecipient {
                     ServerIdentity::Ipv4(ip) => OwnedServerIdentity::Ipv4(ip.to_string()),
                 };
                 OwnedRecipient::Path(lp, si)
-            },
+            }
         }
     }
 }
 
-pub async fn handle_client<F, F2, F3, R, R2, R3>(socket: TokioTcpStream, config: Config, mut verify_user: F, mut get_mailing_list: F2, mut deliver_mail: F3) where
-    F: FnMut(&str) -> R,
-    R: Future<Output = bool>,
-    F2: FnMut(&str) -> R2,
-    R2: Future<Output = Option<Vec<String>>>,
-    F3: FnMut((String, OwnedServerIdentity), Vec<OwnedRecipient>, &str) -> R3,
-    R3: Future<Output = Result<(), &'static str>> {
+pub async fn handle_client(
+    socket: TokioTcpStream,
+    config: Config,
+    event_handler: std::sync::Arc<dyn crate::EventHandler>,
+) {
     debug!("New client: {:?}", socket);
     let mut socket = TcpStream::Unencrypted(socket);
 
-    socket.send_reply(Reply::ServiceReady().with_message(format!(
-        "{} {}: Service ready", config.domain(), config.server_agent()
-    ))).await.unwrap();
+    socket
+        .send_reply(Reply::ServiceReady().with_message(format!(
+            "{} {}: Service ready",
+            config.domain(),
+            config.server_agent()
+        )))
+        .await
+        .unwrap();
 
     let mut reverse_path: Option<(String, OwnedServerIdentity)> = None;
     let mut forward_path: Vec<OwnedRecipient> = Vec::new();
@@ -71,19 +72,24 @@ pub async fn handle_client<F, F2, F3, R, R2, R3>(socket: TokioTcpStream, config:
             socket.shutdown().await.unwrap();
             break;
         }
-        
+
         let command = match Command::from_str(s) {
             Ok(command) => {
                 debug!("Received command: {:?}", command);
                 command
-            },
+            }
             Err(e) => {
                 error!("Failed to parse command: {:?} -> {:?}", s, e);
-                socket.send_reply(Reply::SyntaxError().with_message("Unrecognized command".to_string())).await.unwrap();
+                socket
+                    .send_reply(
+                        Reply::SyntaxError().with_message("Unrecognized command".to_string()),
+                    )
+                    .await
+                    .unwrap();
                 continue;
             }
         };
-        
+
         match command {
             Command::Ehlo(peer_domain) => {
                 // reset data
@@ -115,9 +121,7 @@ pub async fn handle_client<F, F2, F3, R, R2, R3>(socket: TokioTcpStream, config:
                 ))).await.unwrap();
             },
             Command::Quit => {
-                socket.send_reply(Reply::ServiceClosingTransmissionChannel().with_message(format!(
-                    "Goodbye!",
-                ))).await.unwrap();
+                socket.send_reply(Reply::ServiceClosingTransmissionChannel().with_message("Goodbye!".to_string())).await.unwrap();
                 socket.shutdown().await.unwrap();
                 break;
             }
@@ -144,9 +148,7 @@ pub async fn handle_client<F, F2, F3, R, R2, R3>(socket: TokioTcpStream, config:
                     Some(e) => socket.send_reply(Reply::Ok().with_message(format!(
                         "It is a very sad thing that nowadays there is so little useless information.\nThank you for your {} useless bytes.", e.as_str().len(),
                     ))).await.unwrap(),
-                    None => socket.send_reply(Reply::Ok().with_message(format!(
-                        "It is better of course to do useless things than to do nothing."
-                    ))).await.unwrap()
+                    None => socket.send_reply(Reply::Ok().with_message("It is better of course to do useless things than to do nothing.".to_string())).await.unwrap()
                 }
             }
             _ if config.tls_required() && !socket.is_encrypted() => {
@@ -166,13 +168,9 @@ pub async fn handle_client<F, F2, F3, R, R2, R3>(socket: TokioTcpStream, config:
                     reverse_path = Some((lp, si));
                     forward_path.clear();
 
-                    socket.send_reply(Reply::Ok().with_message(format!(
-                        "user recognized"
-                    ))).await.unwrap();
+                    socket.send_reply(Reply::Ok().with_message("user recognized".to_string())).await.unwrap();
                 } else {
-                    socket.send_reply(Reply::UserNotLocal().with_message(format!(
-                        "please specify an existing user"
-                    ))).await.unwrap();
+                    socket.send_reply(Reply::UserNotLocal().with_message("please specify an existing user".to_string())).await.unwrap();
                 }
             }
             Command::To(recipient, _parameters) => {
@@ -193,30 +191,20 @@ pub async fn handle_client<F, F2, F3, R, R2, R3>(socket: TokioTcpStream, config:
                 forward_path.clear();
                 reverse_path = None;
 
-                socket.send_reply(Reply::Ok().with_message(format!(
-                    "OK"
-                ))).await.unwrap();
+                socket.send_reply(Reply::Ok().with_message("OK".to_string())).await.unwrap();
             }
             Command::Verify(user) => {
-                if verify_user(user.as_str()).await {
-                    socket.send_reply(Reply::Ok().with_message(format!(
-                        "User recognized"
-                    ))).await.unwrap();
+                if event_handler.verify_user(user.to_string()).await {
+                    socket.send_reply(Reply::Ok().with_message("User recognized".to_string())).await.unwrap();
                 } else {
-                    socket.send_reply(Reply::MailboxNotCorrect().with_message(format!(
-                        "User Ambiguous"
-                    ))).await.unwrap();
+                    socket.send_reply(Reply::MailboxNotCorrect().with_message("User Ambiguous".to_string())).await.unwrap();
                 }
             }
             Command::Expand(list_name) => {
-                if let Some(mailing_list) = get_mailing_list(list_name.as_str()).await {
-                    socket.send_reply(Reply::Ok().with_message(format!(
-                        "{}", mailing_list.join("\n")
-                    ))).await.unwrap();
+                if let Some(mailing_list) = event_handler.expand_mailing_list(list_name.to_string()).await {
+                    socket.send_reply(Reply::Ok().with_message(mailing_list.join("\n").to_string())).await.unwrap();
                 } else {
-                    socket.send_reply(Reply::ActionNotTaken().with_message(format!(
-                        "There is no mailing list with this name"
-                    ))).await.unwrap();
+                    socket.send_reply(Reply::ActionNotTaken().with_message("There is no mailing list with this name".to_string())).await.unwrap();
                 }
             }
             Command::Help(e) => {
@@ -241,9 +229,11 @@ pub async fn handle_client<F, F2, F3, R, R2, R3>(socket: TokioTcpStream, config:
                     }
                 }
                 b.truncate(b.len() - 3);
-                let mail = std::str::from_utf8(&b).unwrap();
+                use email_parser::prelude::*;
 
-                match deliver_mail(reverse_path.take().unwrap(), forward_path, mail).await {
+                let email = Email::parse(&b).unwrap();
+
+                match event_handler.on_mail(std::pin::Pin::new(&email)).await {
                     Ok(()) => socket.send_reply(Reply::Ok().with_message(format!(
                         "Status confirmed, all bytes are down and the mail is secure.",
                     ))).await.unwrap(),
@@ -253,9 +243,8 @@ pub async fn handle_client<F, F2, F3, R, R2, R3>(socket: TokioTcpStream, config:
                 }
                 forward_path = Vec::new();
 
-                
+
             }
         }
     }
-    
 }

@@ -14,3 +14,6 @@ tokio = { version = "0.2", features = ["full"] }
 tokio-native-tls = "0.1"
 native-tls = "0.2"
 bytes = "0.5"
+async-trait = "0.1"
+futures = "0.3"
+email-parser = "0.4"
