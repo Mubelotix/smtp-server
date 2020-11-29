@@ -1,5 +1,6 @@
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
+use std::borrow::Cow;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum ServerIdentity<'a> {
@@ -31,29 +32,29 @@ impl<'a> std::fmt::Display for LocalPart<'a> {
     }
 }
 
-#[derive(Debug, PartialEq)]
-pub enum SmtpString<'a> {
+/*#[derive(Debug, PartialEq)]
+pub enum Cow<'a, str> {
     Atom(&'a str),
     QuotedString(String),
 }
 
-impl<'a> SmtpString<'a> {
+impl<'a> Cow<'a, str> {
     pub fn as_str(&self) -> &str {
         match self {
-            SmtpString::Atom(s) => s,
-            SmtpString::QuotedString(ref s) => s,
+            Cow::Borrowed(s) => s,
+            Cow::Owned(ref s) => s,
         }
     }
 }
 
-impl<'a> std::fmt::Display for SmtpString<'a> {
+impl<'a> std::fmt::Display for Cow<'a, str> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SmtpString::Atom(s) => write!(f, "{}", s),
-            SmtpString::QuotedString(s) => write!(f, "{}", s),
+            Cow::Borrowed(s) => write!(f, "{}", s),
+            Cow::Owned(s) => write!(f, "{}", s),
         }
     }
-}
+}*/
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Path<'a>(pub Vec<&'a str>, pub (LocalPart<'a>, ServerIdentity<'a>));
@@ -84,10 +85,10 @@ pub enum Command<'a> {
     To(Recipient<'a>, Vec<PARAM<'a>>),
     Data,
     Reset,
-    Verify(SmtpString<'a>),
-    Expand(SmtpString<'a>),
-    Help(Option<SmtpString<'a>>),
-    Noop(Option<SmtpString<'a>>),
+    Verify(Cow<'a, str>),
+    Expand(Cow<'a, str>),
+    Help(Option<Cow<'a, str>>),
+    Noop(Option<Cow<'a, str>>),
     Quit,
     StartTLS,
 }
@@ -462,13 +463,13 @@ mod parsing {
         .map_err(|_| Error::Known("Empty esmtp_value"))?)
     }
 
-    fn string(input: &str) -> Result<(&str, SmtpString), Error> {
+    fn string(input: &str) -> Result<(&str, Cow<str>), Error> {
         if let Ok((input, s)) = take_while1::<_, _, ()>(is_atext)(input) {
-            return Ok((input, SmtpString::Atom(s)));
+            return Ok((input, Cow::Borrowed(s)));
         }
 
         if let Ok((input, s)) = quoted_string(input) {
-            return Ok((input, SmtpString::QuotedString(s)));
+            return Ok((input, Cow::Owned(s)));
         }
 
         Err(Error::Known("Expected a string."))
@@ -727,21 +728,21 @@ mod parsing {
             assert_eq!(help("HELP\r\n").unwrap(), Command::Help(None));
             assert_eq!(
                 help("HELP EXPN\r\n").unwrap(),
-                Command::Help(Some(SmtpString::Atom("EXPN")))
+                Command::Help(Some(Cow::Borrowed("EXPN")))
             );
             assert_eq!(
                 help("HELP \"EXPN\\@\"\r\n").unwrap(),
-                Command::Help(Some(SmtpString::QuotedString("EXPN@".to_string())))
+                Command::Help(Some(Cow::Owned("EXPN@".to_string())))
             );
 
             assert_eq!(noop("NOOP\r\n").unwrap(), Command::Noop(None));
             assert_eq!(
                 noop("NOOP EXPN\r\n").unwrap(),
-                Command::Noop(Some(SmtpString::Atom("EXPN")))
+                Command::Noop(Some(Cow::Borrowed("EXPN")))
             );
             assert_eq!(
                 noop("NOOP \"EXPN\\@\"\r\n").unwrap(),
-                Command::Noop(Some(SmtpString::QuotedString("EXPN@".to_string())))
+                Command::Noop(Some(Cow::Owned("EXPN@".to_string())))
             );
         }
 
@@ -749,21 +750,21 @@ mod parsing {
         fn test_verify_and_expand() {
             assert_eq!(
                 verify("VRFY mubelotix\r\n").unwrap(),
-                Command::Verify(SmtpString::Atom("mubelotix"))
+                Command::Verify(Cow::Borrowed("mubelotix"))
             );
             assert_eq!(
                 verify("VRFY \"mubelotix\\@gmail\\.com\"\r\n").unwrap(),
-                Command::Verify(SmtpString::QuotedString("mubelotix@gmail.com".to_string()))
+                Command::Verify(Cow::Owned("mubelotix@gmail.com".to_string()))
             );
             assert!(verify("VRFY \"mubelotix\\@gmail\\.com\r\n").is_err());
 
             assert_eq!(
                 expand("EXPN rustaceans\r\n").unwrap(),
-                Command::Expand(SmtpString::Atom("rustaceans"))
+                Command::Expand(Cow::Borrowed("rustaceans"))
             );
             assert_eq!(
                 expand("EXPN \"Rust\\ lovers\"\r\n").unwrap(),
-                Command::Expand(SmtpString::QuotedString("Rust lovers".to_string()))
+                Command::Expand(Cow::Owned("Rust lovers".to_string()))
             );
             assert!(expand("EXPN \"unterminated name\r\n").is_err());
         }
@@ -998,11 +999,11 @@ mod parsing {
 
             assert_eq!(
                 string("mubelotix").unwrap().1,
-                SmtpString::Atom("mubelotix")
+                Cow::Borrowed("mubelotix")
             );
             assert_eq!(
                 string(r#""John\ Snow""#).unwrap().1,
-                SmtpString::QuotedString("John Snow".to_string())
+                Cow::Owned::<str>("John Snow".to_string())
             );
             assert!(string(r#"école"#).is_err());
         }

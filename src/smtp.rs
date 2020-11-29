@@ -142,7 +142,7 @@ pub(crate) async fn handle_client(
             Command::Noop(e) => {
                 match e {
                     Some(e) => socket.send_reply(Reply::Ok().with_message(format!(
-                        "It is a very sad thing that nowadays there is so little useless information.\nThank you for your {} useless bytes.", e.as_str().len(),
+                        "It is a very sad thing that nowadays there is so little useless information.\nThank you for your {} useless bytes.", e.len(),
                     ))).await.unwrap(),
                     None => socket.send_reply(Reply::Ok().with_message("It is better of course to do useless things than to do nothing.".to_string())).await.unwrap()
                 }
@@ -206,7 +206,7 @@ pub(crate) async fn handle_client(
             Command::Help(e) => {
                 match e {
                     Some(e) => socket.send_reply(Reply::Ok().with_message(format!(
-                        "Thanks for using this SMTP server! You asked help about {:?}", e.as_str()
+                        "Thanks for using this SMTP server! You asked help about {:?}", e.as_ref()
                     ))).await.unwrap(),
                     None => socket.send_reply(Reply::Ok().with_message("Thanks for using this SMTP server!".to_string())).await.unwrap()
                 }
