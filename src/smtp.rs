@@ -1,6 +1,4 @@
-use crate::config::Config;
-use crate::stream::TcpStream;
-use crate::{commands::*, /*mta::transfert_mail, */ replies::Reply};
+use crate::{commands::*, config::Config, replies::Reply, stream::TcpStream};
 use bytes::BytesMut;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};

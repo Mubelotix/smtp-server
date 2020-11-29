@@ -12,7 +12,7 @@ async fn main() {
             &self,
             email: std::pin::Pin<&email_parser::email::Email<'b>>,
         ) -> Result<(), String> {
-            println!("{:?}", email.as_ref().body.as_ref());
+            log::info!("{:?}", email.as_ref().body.as_ref());
             Ok(())
         }
     }
