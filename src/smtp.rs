@@ -4,39 +4,6 @@ use bytes::BytesMut;
 use log::{debug, error, info, trace, warn};
 use tokio::net::TcpStream as TokioTcpStream;
 
-#[derive(Debug, PartialEq)]
-pub enum OwnedServerIdentity {
-    Domain(String),
-    Ipv4(String),
-}
-
-#[derive(Debug, PartialEq)]
-pub enum OwnedRecipient {
-    Postmaster(String),
-    LocalPostmaster,
-    Path(String, OwnedServerIdentity),
-}
-
-impl<'a> From<Recipient<'a>> for OwnedRecipient {
-    fn from(r: Recipient) -> Self {
-        match r {
-            Recipient::Postmaster(d) => OwnedRecipient::Postmaster(d.to_string()),
-            Recipient::LocalPostmaster => OwnedRecipient::LocalPostmaster,
-            Recipient::Path(Path(_sr, (lp, si))) => {
-                let lp = match lp {
-                    LocalPart::DotString(ds) => ds.to_string(),
-                    LocalPart::QuotedString(qs) => qs,
-                };
-                let si = match si {
-                    ServerIdentity::Domain(d) => OwnedServerIdentity::Domain(d.to_string()),
-                    ServerIdentity::Ipv4(ip) => OwnedServerIdentity::Ipv4(ip.to_string()),
-                };
-                OwnedRecipient::Path(lp, si)
-            }
-        }
-    }
-}
-
 pub(crate) async fn handle_client(
     socket: TokioTcpStream,
     config: std::sync::Arc<Config>,
@@ -53,15 +20,21 @@ pub(crate) async fn handle_client(
         .await
         .unwrap();
 
-    let mut reverse_path: Option<(String, OwnedServerIdentity)> = None;
-    let mut forward_path: Vec<OwnedRecipient> = Vec::new();
+    let mut reverse_path: Option<(LocalPart, ServerIdentity)> = None;
+    let mut forward_path: Vec<Recipient> = Vec::new();
 
     loop {
         let mut b = BytesMut::new();
 
         // The `read` method is defined by this trait.
         let n = socket.read_buf(&mut b).await.unwrap();
-        let s = std::str::from_utf8(&b[..n]).unwrap();
+        let s = std::str::from_utf8(unsafe {
+            // BIG WARNING:
+            // This is disabling compiler lifetime checks on the received data.
+            // However, your are still disallowed to move references to this data outside of this scope.
+            // Please call to_owned() when you need to save data.
+            std::mem::transmute::<_, &'static [u8]>(&b[..n])
+        }).unwrap();
 
         if s.is_empty() {
             warn!("Empty packet received.");
@@ -153,15 +126,7 @@ pub(crate) async fn handle_client(
             Command::From(path, _parameters) => {
                 if let Some(Path(_sr,(lp, si))) = path {
                     // TODO verify identity
-                    let lp = match lp {
-                        LocalPart::DotString(ds) => ds.to_string(),
-                        LocalPart::QuotedString(qs) => qs,
-                    };
-                    let si = match si {
-                        ServerIdentity::Domain(d) => OwnedServerIdentity::Domain(d.to_string()),
-                        ServerIdentity::Ipv4(ip) => OwnedServerIdentity::Ipv4(ip.to_string()),
-                    };
-                    reverse_path = Some((lp, si));
+                    reverse_path = Some((lp.to_owned(), si.to_owned()));
                     forward_path.clear();
 
                     socket.send_reply(Reply::Ok().with_message("user recognized".to_string())).await.unwrap();
@@ -172,7 +137,7 @@ pub(crate) async fn handle_client(
             Command::To(recipient, _parameters) => {
                 let recipient = recipient.into();
                 if !forward_path.contains(&recipient) {
-                    forward_path.push(recipient);
+                    forward_path.push(recipient.to_owned());
 
                     socket.send_reply(Reply::Ok().with_message(format!(
                         "1 recipient added, {} recipients in total", forward_path.len()
