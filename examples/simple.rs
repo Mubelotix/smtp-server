@@ -14,6 +14,6 @@ async fn main() {
         }
     }
 
-    let mut server = SmtpServer::new(EHandler {});
+    let mut server = SmtpServer::new(EHandler {}, "mubelotix.dev");
     server.run();
 }

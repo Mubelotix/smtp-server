@@ -2,56 +2,6 @@ use std::sync::Arc;
 use tokio_native_tls::TlsAcceptor;
 
 #[derive(Debug)]
-pub struct ConfigBuilder {
-    domain: String,
-    server_agent: Option<String>,
-    tls_acceptor: Option<TlsAcceptor>,
-    tls_required: bool,
-}
-
-impl ConfigBuilder {
-    pub fn new<T: Into<String>>(domain: T) -> ConfigBuilder {
-        ConfigBuilder {
-            domain: domain.into(),
-            server_agent: None,
-            tls_acceptor: None,
-            tls_required: false,
-        }
-    }
-
-    pub fn with_domain<T: Into<String>>(mut self, domain: T) -> ConfigBuilder {
-        self.domain = domain.into();
-        self
-    }
-
-    pub fn with_server_agent<T: Into<String>>(mut self, domain: T) -> ConfigBuilder {
-        self.server_agent = Some(domain.into());
-        self
-    }
-
-    pub fn with_tls<T: Into<TlsAcceptor>>(mut self, tls_acceptor: T) -> ConfigBuilder {
-        self.tls_acceptor = Some(tls_acceptor.into());
-        self
-    }
-
-    pub fn force_tls(mut self) -> ConfigBuilder {
-        self.tls_required = true;
-        self
-    }
-
-    pub fn build(self) -> Config {
-        Config {
-            raw_config: Arc::new(RawConfig {
-                domain: self.domain,
-                server_agent: self.server_agent.unwrap_or(String::from("Rust SMTP server")),
-                tls_acceptor: self.tls_acceptor,
-                tls_required: self.tls_required,
-            })
-        }
-    }
-}
-
-#[derive(Debug)]
 struct RawConfig {
     domain: String,
     server_agent: String,
@@ -65,6 +15,17 @@ pub struct Config {
 }
 
 impl Config {
+    pub fn new(domain: String) -> Config {
+        Config {
+            raw_config: Arc::new(RawConfig {
+                domain,
+                server_agent: String::from("Rust SMTP server"),
+                tls_acceptor: None,
+                tls_required: false,
+            })
+        }
+    }
+
     pub fn domain(&self) -> &str {
         &self.raw_config.domain
     }
