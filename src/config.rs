@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use tokio_native_tls::TlsAcceptor;
 
 #[derive(Debug, Clone)]

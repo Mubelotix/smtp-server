@@ -4,7 +4,6 @@ use crate::{commands::*, /*mta::transfert_mail, */ replies::Reply};
 use bytes::BytesMut;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use std::future::Future;
 use tokio::net::TcpStream as TokioTcpStream;
 
 #[derive(Debug, PartialEq)]
@@ -211,15 +210,11 @@ pub(crate) async fn handle_client(
                     Some(e) => socket.send_reply(Reply::Ok().with_message(format!(
                         "Thanks for using this SMTP server! You asked help about {:?}", e.as_str()
                     ))).await.unwrap(),
-                    None => socket.send_reply(Reply::Ok().with_message(format!(
-                        "Thanks for using this SMTP server!"
-                    ))).await.unwrap()
+                    None => socket.send_reply(Reply::Ok().with_message("Thanks for using this SMTP server!".to_string())).await.unwrap()
                 }
             }
             Command::Data => {
-                socket.send_reply(Reply::StartMailInput().with_message(format!(
-                    "Go ahead!",
-                ))).await.unwrap();
+                socket.send_reply(Reply::StartMailInput().with_message("Go ahead!".to_string())).await.unwrap();
                 let mut b = BytesMut::new();
                 loop {
                     socket.read_buf(&mut b).await.unwrap();
@@ -233,9 +228,7 @@ pub(crate) async fn handle_client(
                 let email = Email::parse(&b).unwrap();
 
                 match event_handler.on_mail(std::pin::Pin::new(&email)).await {
-                    Ok(()) => socket.send_reply(Reply::Ok().with_message(format!(
-                        "Status confirmed, all bytes are down and the mail is secure.",
-                    ))).await.unwrap(),
+                    Ok(()) => socket.send_reply(Reply::Ok().with_message("Status confirmed, all bytes are down and the mail is secure.".to_string())).await.unwrap(),
                     Err(e) => socket.send_reply(Reply::ActionAborted().with_message(format!(
                         "Mail not delivered: {}", e
                     ))).await.unwrap()

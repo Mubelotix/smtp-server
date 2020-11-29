@@ -154,11 +154,10 @@ mod parsing {
     }
 
     fn dot_string(input: &str) -> Result<(&str, &str), Error> {
-        let mut chars = input.chars();
         let mut idx = 0;
         let mut expects_text = true;
 
-        while let Some(character) = chars.next() {
+        for character in input.chars() {
             if !is_atext(character) {
                 if expects_text {
                     return Err(Error::Known("Invalid character in the local part of a mailbox at the first position or after a dot."));
@@ -211,20 +210,20 @@ mod parsing {
             }
         }
 
-        return Err(Error::Known(
+        Err(Error::Known(
             "Incomplete quoted string. Expected closing double quote.",
-        ));
+        ))
     }
 
     fn local_part(input: &str) -> Result<(&str, LocalPart), Error> {
         if let Ok((i, s)) = dot_string(input) {
-            return Ok((i, LocalPart::DotString(s)));
+            Ok((i, LocalPart::DotString(s)))
         } else if let Ok((i, s)) = quoted_string(input) {
-            return Ok((i, LocalPart::QuotedString(s)));
+            Ok((i, LocalPart::QuotedString(s)))
         } else {
-            return Err(Error::Known(
+            Err(Error::Known(
                 "Invalid local part (invalid dot_string AND invalid quoted_string)",
-            ));
+            ))
         }
     }
 
@@ -341,11 +340,11 @@ mod parsing {
 
     fn identity(input: &str) -> Result<(&str, ServerIdentity), Error> {
         if let Ok((input, addr)) = ipv4_address(input) {
-            return Ok((input, ServerIdentity::Ipv4(addr)));
+            Ok((input, ServerIdentity::Ipv4(addr)))
         } else if let Ok((input, domain)) = domain(input) {
-            return Ok((input, ServerIdentity::Domain(domain)));
+            Ok((input, ServerIdentity::Domain(domain)))
         } else {
-            return Err(Error::InvalidIdentity);
+            Err(Error::InvalidIdentity)
         }
     }
 
@@ -659,31 +658,31 @@ mod parsing {
 
     pub fn command(input: &str) -> Result<Command, Error> {
         if let Ok(command) = ehlo(input) {
-            return Ok(command);
+            Ok(command)
         } else if let Ok(command) = start_tls(input) {
-            return Ok(command);
+            Ok(command)
         } else if let Ok(command) = to(input) {
-            return Ok(command);
+            Ok(command)
         } else if let Ok(command) = from(input) {
-            return Ok(command);
+            Ok(command)
         } else if let Ok(command) = data(input) {
-            return Ok(command);
+            Ok(command)
         } else if let Ok(command) = quit(input) {
-            return Ok(command);
+            Ok(command)
         } else if let Ok(command) = verify(input) {
-            return Ok(command);
+            Ok(command)
         } else if let Ok(command) = expand(input) {
-            return Ok(command);
+            Ok(command)
         } else if let Ok(command) = reset(input) {
-            return Ok(command);
+            Ok(command)
         } else if let Ok(command) = helo(input) {
-            return Ok(command);
+            Ok(command)
         } else if let Ok(command) = noop(input) {
-            return Ok(command);
+            Ok(command)
         } else if let Ok(command) = help(input) {
-            return Ok(command);
+            Ok(command)
         } else {
-            return Err(Error::Known("No command matching"));
+            Err(Error::Known("No command matching"))
         }
     }
 
