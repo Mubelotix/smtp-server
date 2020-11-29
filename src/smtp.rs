@@ -40,9 +40,9 @@ impl<'a> From<Recipient<'a>> for OwnedRecipient {
     }
 }
 
-pub async fn handle_client(
+pub(crate) async fn handle_client(
     socket: TokioTcpStream,
-    config: Config,
+    config: std::sync::Arc<Config>,
     event_handler: std::sync::Arc<dyn crate::events::EventHandler>,
 ) {
     debug!("New client: {:?}", socket);
@@ -51,8 +51,8 @@ pub async fn handle_client(
     socket
         .send_reply(Reply::ServiceReady().with_message(format!(
             "{} {}: Service ready",
-            config.domain(),
-            config.server_agent()
+            config.domain,
+            config.server_agent
         )))
         .await
         .unwrap();
@@ -99,9 +99,9 @@ pub async fn handle_client(
                 // send reply
                 socket.send_reply(Reply::Ok().with_message(format!(
                     "{} greets {}{}",
-                    config.domain(),
+                    config.domain,
                     peer_domain,
-                    if config.tls_available() || config.tls_required() {
+                    if config.tls_acceptor.is_some() || config.tls_required {
                         "\nSTARTTLS"
                     } else {
                         ""
@@ -116,7 +116,7 @@ pub async fn handle_client(
                 // send reply
                 socket.send_reply(Reply::Ok().with_message(format!(
                     "{} greets {}",
-                    config.domain(),
+                    config.domain,
                     peer_domain
                 ))).await.unwrap();
             },
@@ -126,7 +126,7 @@ pub async fn handle_client(
                 break;
             }
             Command::StartTLS => {
-                if let Some(tls_acceptor) = config.tls_acceptor() {
+                if let Some(tls_acceptor) = &config.tls_acceptor {
                     socket.send_reply(Reply::ServiceReady().with_message("Let's encrypt!".to_string())).await.unwrap();
                     socket = match socket.accept(tls_acceptor).await {
                         Ok(s) => s,
@@ -137,7 +137,7 @@ pub async fn handle_client(
                     };
                     forward_path.clear();
                     reverse_path = None;
-                } else if config.tls_required() {
+                } else if config.tls_required {
                     socket.send_reply(Reply::TlsUnavailable().with_message("TLS required, but unavailable due to temporary reason".to_string())).await.unwrap();
                 } else {
                     socket.send_reply(Reply::SyntaxError().with_message("Unrecognized command".to_string())).await.unwrap();
@@ -151,7 +151,7 @@ pub async fn handle_client(
                     None => socket.send_reply(Reply::Ok().with_message("It is better of course to do useless things than to do nothing.".to_string())).await.unwrap()
                 }
             }
-            _ if config.tls_required() && !socket.is_encrypted() => {
+            _ if config.tls_required && !socket.is_encrypted() => {
                 socket.send_reply(Reply::TlsRequired().with_message("Must issue a STARTTLS command first".to_string())).await.unwrap();
             }
             Command::From(path, _parameters) => {

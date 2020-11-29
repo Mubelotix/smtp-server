@@ -14,6 +14,7 @@ async fn main() {
         }
     }
 
-    let mut server = SmtpServer::new(EHandler {}, "mubelotix.dev");
-    server.run();
+    SmtpServer::new(EHandler {}, "mubelotix.dev")
+        .tls("certificate.pfx", "password")
+        .run();
 }
