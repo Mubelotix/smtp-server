@@ -3,12 +3,12 @@
 use log::{debug, error, info, trace, warn};
 
 pub mod commands;
-pub mod mda;
-pub mod smtp;
-pub mod replies;
-pub mod events;
 pub(crate) mod config;
+pub mod events;
+pub mod mda;
+pub mod replies;
+pub mod smtp;
 pub(crate) mod stream;
 
-pub use mda::SmtpServer;
 pub use events::EventHandler;
+pub use mda::SmtpServer;

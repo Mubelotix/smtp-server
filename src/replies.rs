@@ -2,13 +2,19 @@
 use log::{debug, error, info, trace, warn};
 
 #[derive(Debug)]
-pub struct Reply<T = String> where T: std::fmt::Display {
+pub struct Reply<T = String>
+where
+    T: std::fmt::Display,
+{
     pub reply_type: ReplyType,
     pub message: Option<T>,
 }
 
 #[allow(non_snake_case)]
-impl<T> Reply<T> where T: std::fmt::Display {
+impl<T> Reply<T>
+where
+    T: std::fmt::Display,
+{
     pub fn Ok() -> Reply<T> {
         Reply {
             reply_type: ReplyType::Ok,
@@ -185,11 +191,17 @@ impl<T> Reply<T> where T: std::fmt::Display {
     }
 
     pub fn with_message(self, message: T) -> Reply<T> {
-        Reply { message: Some(message), ..self }
+        Reply {
+            message: Some(message),
+            ..self
+        }
     }
 }
 
-impl<T> From<(usize, T)> for Reply<T> where T: std::fmt::Display {
+impl<T> From<(usize, T)> for Reply<T>
+where
+    T: std::fmt::Display,
+{
     fn from((code, message): (usize, T)) -> Reply<T> {
         Reply {
             reply_type: ReplyType::from(code),
@@ -297,7 +309,10 @@ impl From<usize> for ReplyType {
     }
 }
 
-impl<T> ToString for Reply<T> where T: std::fmt::Display {
+impl<T> ToString for Reply<T>
+where
+    T: std::fmt::Display,
+{
     fn to_string(&self) -> String {
         match self.message {
             Some(ref m) => process_message(self.reply_type.clone().into(), &m.to_string()),

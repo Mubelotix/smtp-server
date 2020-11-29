@@ -51,8 +51,7 @@ pub(crate) async fn handle_client(
     socket
         .send_reply(Reply::ServiceReady().with_message(format!(
             "{} {}: Service ready",
-            config.domain,
-            config.server_agent
+            config.domain, config.server_agent
         )))
         .await
         .unwrap();

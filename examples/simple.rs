@@ -1,4 +1,4 @@
-use smtp_server::{SmtpServer, EventHandler};
+use smtp_server::{EventHandler, SmtpServer};
 
 #[tokio::main]
 async fn main() {
@@ -8,7 +8,10 @@ async fn main() {
 
     #[async_trait::async_trait]
     impl EventHandler for EHandler {
-        async fn on_mail<'b>(&self, email: std::pin::Pin<&email_parser::email::Email<'b>>) -> Result<(), String> {
+        async fn on_mail<'b>(
+            &self,
+            email: std::pin::Pin<&email_parser::email::Email<'b>>,
+        ) -> Result<(), String> {
             println!("{:?}", email.as_ref().body.as_ref());
             Ok(())
         }

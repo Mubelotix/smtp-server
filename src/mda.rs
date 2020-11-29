@@ -1,11 +1,11 @@
+use crate::config::Config;
+use crate::events::EventHandler;
 use crate::smtp::handle_client;
 use native_tls::{Identity, TlsAcceptor};
 use std::fs::File;
 use std::io::prelude::*;
 use std::sync::Arc;
 use tokio::net::TcpListener;
-use crate::events::EventHandler;
-use crate::config::Config;
 
 pub struct SmtpServer {
     event_handler: Arc<dyn EventHandler>,
@@ -43,7 +43,9 @@ impl SmtpServer {
 
         futures::executor::block_on(async move {
             // open socket
-            let listener = TcpListener::bind(format!("0.0.0.0:{}", self.port)).await.unwrap();
+            let listener = TcpListener::bind(format!("0.0.0.0:{}", self.port))
+                .await
+                .unwrap();
 
             loop {
                 let event_handler = Arc::clone(&self.event_handler);

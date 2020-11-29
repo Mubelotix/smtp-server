@@ -1,10 +1,10 @@
-use tokio::net::TcpStream as UnencryptedTcpStream;
-use tokio_native_tls::TlsStream as EncryptedTcpStream;
-use tokio_native_tls::{TlsAcceptor};
-use native_tls::Error as TlsError;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use crate::replies::Reply;
 use bytes::BufMut;
+use native_tls::Error as TlsError;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpStream as UnencryptedTcpStream;
+use tokio_native_tls::TlsAcceptor;
+use tokio_native_tls::TlsStream as EncryptedTcpStream;
 
 pub enum TcpStream {
     Unencrypted(UnencryptedTcpStream),
@@ -19,9 +19,14 @@ impl TcpStream {
         }
     }
 
-    pub async fn read_buf<'a, B>(&'a mut self, buf: &'a mut B) -> std::result::Result<usize, std::io::Error> where
+    pub async fn read_buf<'a, B>(
+        &'a mut self,
+        buf: &'a mut B,
+    ) -> std::result::Result<usize, std::io::Error>
+    where
         Self: Sized + Unpin,
-        B: BufMut,  {
+        B: BufMut,
+    {
         match self {
             TcpStream::Unencrypted(s) => s.read_buf(buf).await,
             TcpStream::Encrypted(s) => s.read_buf(buf).await,
@@ -37,17 +42,11 @@ impl TcpStream {
 
     pub async fn accept(self, tls_acceptor: &TlsAcceptor) -> Result<TcpStream, TlsError> {
         match self {
-            TcpStream::Unencrypted(s) => {
-                match tls_acceptor.accept(s).await {
-                    Ok(s) => {
-                        Ok(TcpStream::Encrypted(s))
-                    },
-                    Err(e) => {
-                        Err(e)
-                    }
-                }
+            TcpStream::Unencrypted(s) => match tls_acceptor.accept(s).await {
+                Ok(s) => Ok(TcpStream::Encrypted(s)),
+                Err(e) => Err(e),
             },
-            TcpStream::Encrypted(s) => Ok(TcpStream::Encrypted(s))
+            TcpStream::Encrypted(s) => Ok(TcpStream::Encrypted(s)),
         }
     }
 

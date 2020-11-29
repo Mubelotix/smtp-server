@@ -41,7 +41,7 @@ impl<'a> SmtpString<'a> {
     pub fn as_str(&self) -> &str {
         match self {
             SmtpString::Atom(s) => s,
-            SmtpString::QuotedString(ref s) => s
+            SmtpString::QuotedString(ref s) => s,
         }
     }
 }
@@ -56,7 +56,7 @@ impl<'a> std::fmt::Display for SmtpString<'a> {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct Path<'a> (pub Vec<&'a str>, pub (LocalPart<'a>, ServerIdentity<'a>));
+pub struct Path<'a>(pub Vec<&'a str>, pub (LocalPart<'a>, ServerIdentity<'a>));
 type PARAM<'a> = (&'a str, Option<&'a str>);
 
 #[derive(Debug, PartialEq, Clone)]
@@ -106,12 +106,7 @@ impl<'a> Command<'a> {
 
 mod parsing {
     use super::*;
-    use nom::bytes::complete::{
-        tag_no_case,
-        tag,
-        take_while,
-        take_while1,
-    };
+    use nom::bytes::complete::{tag, tag_no_case, take_while, take_while1};
     use std::cell::Cell; // todo remove this
 
     #[derive(Debug)]
